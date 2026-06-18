@@ -1,0 +1,65 @@
+{
+  "name": "@lodgeit-labs/fano-classifier-client",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the Fano Classifier integration kit — typed client + canonical schema + legacy-response adapter for the operator-authoritative response semantic.",
+  "license": "Apache-2.0",
+  "author": "LodgeiT Labs",
+  "homepage": "https://github.com/lodgeit-labs/fano-classifier-integration-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lodgeit-labs/fano-classifier-integration-kit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lodgeit-labs/fano-classifier-integration-kit/issues"
+  },
+  "keywords": [
+    "fano-classifier",
+    "tb-classification",
+    "trial-balance",
+    "sbrm",
+    "neurosymbolic",
+    "lodgeit",
+    "accounting"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./adapter": {
+      "types": "./dist/adapter.d.ts",
+      "import": "./dist/adapter.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "prepare": "npm run build"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
