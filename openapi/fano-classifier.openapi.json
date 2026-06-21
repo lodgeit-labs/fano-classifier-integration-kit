@@ -1,0 +1,180 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Fano-Constraint API",
+    "version": "Rev 26 (mc08)"
+  },
+  "paths": {
+    "/ingest/trial_balance": {
+      "post": {
+        "summary": "Ingest Trial Balance",
+        "operationId": "ingest_trial_balance_ingest_trial_balance_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrialBalancePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LineItem": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "predicted_code": {
+            "type": "string",
+            "pattern": "^sbrm_\\d+$",
+            "title": "Predicted Code"
+          },
+          "source_topology": {
+            "type": "string",
+            "enum": [
+              "current_assets",
+              "non_current_assets",
+              "current_liabilities",
+              "non_current_liabilities",
+              "equity",
+              "revenue",
+              "expenses"
+            ],
+            "title": "Source Topology"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "description",
+          "predicted_code",
+          "source_topology",
+          "confidence",
+          "amount"
+        ],
+        "title": "LineItem"
+      },
+      "TrialBalancePayload": {
+        "properties": {
+          "entity_structure": {
+            "type": "string",
+            "enum": [
+              "company",
+              "trust",
+              "partnership",
+              "sole_trader",
+              "super_fund"
+            ],
+            "title": "Entity Structure"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/LineItem"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_structure",
+          "lines"
+        ],
+        "title": "TrialBalancePayload"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  }
+}

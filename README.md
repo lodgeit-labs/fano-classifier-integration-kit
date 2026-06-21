@@ -2,7 +2,7 @@
 
 **Integration kit for the Fano Classifier** — a new methodology for clearing trial balances via a cascade firewall + rich warning payload. Designed for AI agents and human developers building against the Fano `/ingest/trial_balance` API.
 
-> **Status:** Early-stage scaffolding (η.0). SDK + examples + methodology docs are staged in subsequent releases (η.1, η.2, η.3).
+> **Status:** TypeScript SDK + OpenAPI contract + SBRM lexicon shipped (v0.1.1). Canonical examples + methodology docs staged in subsequent releases (η.2, η.3).
 
 ---
 
@@ -33,8 +33,9 @@ This kit gives adopting teams the API contract, type definitions, examples, and 
 
 ## Roadmap
 
-- **η.0** (this commit) — repo creation + initial scaffolding
-- **η.1** — TypeScript SDK + type definitions (the Daniyal-team-consumable layer)
+- **η.0** ✅ — repo creation + initial scaffolding (v0.1.0)
+- **η.1** ✅ — TypeScript SDK + type definitions (the Daniyal-team-consumable layer; v0.1.0)
+- **η.1.5** ✅ — OpenAPI contract + SBRM lexicon snapshot + LEXICON.md (v0.1.1; this release)
 - **η.2** — Examples (real fixture inputs + canonical response samples + warning-handling patterns)
 - **η.3** — Implementation methodology docs (operator-review-queue pattern + warning-handling + repair-journal)
 - **η.4** — Daniyal-team briefing (one-page top-down spec)
@@ -46,12 +47,17 @@ fano-classifier-integration-kit/
 ├── README.md              # this file
 ├── LICENSE                # Apache 2.0
 ├── .gitignore             # standard Node/TypeScript
-├── docs/                  # architecture + getting-started + methodology
+├── package.json           # @lodgeit-labs/fano-classifier-client@0.1.1
+├── docs/                  # architecture + getting-started + lexicon resolution
 │   ├── architecture.md    # Layer 1a/1b operator-authoritative + cascade-advisory
-│   └── getting-started.md # quick orientation for adopters
-├── src/                   # TypeScript SDK (populated at η.1)
-├── examples/              # canonical request/response examples (populated at η.2)
-└── .github/               # CI hygiene (populated alongside η.1+)
+│   ├── getting-started.md # quick orientation for adopters
+│   └── LEXICON.md         # how to resolve sbrm_NNNN → human name
+├── openapi/               # versioned wire contract + SBRM lexicon snapshot
+│   ├── fano-classifier.openapi.json   # OpenAPI 3.1 spec fetched from production (Rev 26 mc08)
+│   └── sbrm-lexicon-au.json           # 1,651-code LodgeiT-AU lexicon (pinned v0.1.1 snapshot)
+├── src/                   # TypeScript SDK (η.1 — populated)
+├── examples/              # canonical request/response examples (η.2 — staged)
+└── .github/               # CI hygiene
 ```
 
 ## Reference architecture
@@ -63,11 +69,13 @@ The canonical architecture document is at [`docs/architecture.md`](docs/architec
 - **Five warning kinds** — `topology_disagreement`, `code_disagreement`, `code_consolidation`, `entity_conditional_drift`, `subfloor_abstention`.
 - **Rich warning payload schema** — each warning carries `cascade_alternate_hypothesis`, `disagreement_reason`, `suggested_repair_journal`.
 
-## API surface (preview)
+## API surface
 
 Production endpoint: `https://fano-engine-afmurhqkaq-ts.a.run.app/ingest/trial_balance`
 
-Request shape (Pydantic-validated):
+The versioned OpenAPI 3.1 contract is at [`openapi/fano-classifier.openapi.json`](openapi/fano-classifier.openapi.json) — fetched from production at v0.1.1 release (Rev 26 mc08). Suitable for generating strongly-typed clients (NSwag / Kiota / openapi-python-client / openapi-typescript).
+
+Request shape (Pydantic-validated; see OpenAPI for canonical schema):
 
 ```yaml
 {
@@ -87,7 +95,9 @@ Request shape (Pydantic-validated):
 
 Equilibrium constraint: `abs(sum(line.amount for line in lines)) <= 0.01`. Single-line probing requires a sentinel balancing line.
 
-Detailed response semantics ship at η.1 alongside the TypeScript type defs.
+The response returns `predicted_code: "sbrm_NNNN"` — to resolve those codes to human-readable names, see [`docs/LEXICON.md`](docs/LEXICON.md) and the pinned [`openapi/sbrm-lexicon-au.json`](openapi/sbrm-lexicon-au.json) lookup table (1,651 codes covering the LodgeiT-AU taxonomy).
+
+TypeScript SDK consumes this contract directly; see [`src/types.ts`](src/types.ts) and [`src/client.ts`](src/client.ts).
 
 ## License
 
