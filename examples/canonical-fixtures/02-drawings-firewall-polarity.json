@@ -1,0 +1,73 @@
+{
+  "$comment": "Canonical KC2 fixture — Drawings × all 5 entity structures. Captured at production mini-Gauntlet 2026-06-25T10:59:03Z against fano-engine-00032-qan (Rev 27 iter11.B). This is the **load-bearing entity-polarity demonstration**: the firewall's empirical `allowed_organisation` table for sbrm_3140 surfaces opposite polarity than canonical-taxonomy expectation. The deployed Prolog firewall is the wire-truth.",
+  "load_bearing_lesson": {
+    "lesson_id": "L#64 PROMOTED (Brain canon; 2026-06-25 mc09)",
+    "summary": "Data-truth (production-corpus silver-tier code) vs taxonomy-truth (canonical YAML allowed_organisation table) can disagree; both surface side-by-side via predicted_code vs fano_status",
+    "implication_for_consumer": "Do NOT discard draft_fact rows as 'model error'. They are firewall-quarantined rows surfacing a polysemy that needs operator review."
+  },
+  "request_template": {
+    "entity_structure": "<one of 5>",
+    "lines": [
+      {
+        "description": "Drawings",
+        "predicted_code": "sbrm_0000",
+        "source_topology": "current_assets",
+        "confidence": 0.5,
+        "amount": 100.0
+      },
+      {
+        "description": "Sales Income",
+        "predicted_code": "sbrm_4110",
+        "source_topology": "revenue",
+        "confidence": 0.95,
+        "amount": -100.0
+      }
+    ]
+  },
+  "per_entity_empirical_verdict": {
+    "company": {
+      "predicted_code": "sbrm_3140",
+      "confidence": 0.696,
+      "cascade_topology": "equity",
+      "fano_status": "draft_fact",
+      "quarantine_reason": "Entity/Topological Drift: Anchor=equity, Guess=sbrm_3140, Entity=company",
+      "operator_review_action": "Operator inspects whether company-Drawings should route to sbrm_3140 (Equity > Company Drawings; firewall says no) OR an alternative equity code; firewall surfaces both possibilities"
+    },
+    "trust": {
+      "predicted_code": "sbrm_2240",
+      "confidence": 0.797,
+      "cascade_topology": "current_liabilities",
+      "fano_status": "accepted_fact",
+      "quarantine_reason": null,
+      "operator_review_action": "Auto-accepted; trust-Drawings is silver-tier dominantly Liability > Trust > Beneficiary Drawings (sbrm_2240)"
+    },
+    "partnership": {
+      "predicted_code": "sbrm_3140",
+      "confidence": 0.983,
+      "cascade_topology": "equity",
+      "fano_status": "accepted_fact",
+      "quarantine_reason": null,
+      "operator_review_action": "Auto-accepted; partnership-Drawings is allowed_organisation(sbrm_3140, partnership) per deployed Prolog firewall"
+    },
+    "sole_trader": {
+      "predicted_code": "sbrm_3140",
+      "confidence": 0.641,
+      "cascade_topology": "equity",
+      "fano_status": "accepted_fact",
+      "quarantine_reason": null,
+      "operator_review_action": "Auto-accepted; sole_trader-Drawings is allowed_organisation(sbrm_3140, sole_trader) per deployed Prolog firewall (note: canonical-taxonomy intent assumed sbrm_3145 here; empirical wire-truth differs — see L#64 PROMOTED)"
+    },
+    "super_fund": {
+      "predicted_code": "sbrm_3140",
+      "confidence": 0.641,
+      "cascade_topology": "equity",
+      "fano_status": "draft_fact",
+      "quarantine_reason": "Entity/Topological Drift: Anchor=equity, Guess=sbrm_3140, Entity=super_fund",
+      "operator_review_action": "Operator inspects whether super_fund-Drawings should route to sbrm_3140 (firewall says no) OR an alternative member-equity code; firewall surfaces both possibilities"
+    }
+  },
+  "consumer_implementation_pattern": {
+    "summary": "When fano_status=draft_fact, route the row to operator-review queue. Do NOT auto-post to GL. Surface (predicted_code, cascade_topology, quarantine_reason) side-by-side with the source CoA's (operator_hint_predicted_code, operator_hint_source_topology).",
+    "reference": "See examples/demo-gui/ for a working browser-side reference implementation"
+  }
+}

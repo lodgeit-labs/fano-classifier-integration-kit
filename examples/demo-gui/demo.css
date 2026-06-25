@@ -1,0 +1,325 @@
+/* Fano Classifier demo GUI — minimal stylesheet. No frameworks; no build step. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: #fafafa;
+  color: #222;
+  line-height: 1.45;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+header h1 {
+  margin-bottom: 0.25rem;
+}
+
+header h1 small {
+  color: #666;
+  font-size: 0.7em;
+  font-weight: 400;
+}
+
+.subtitle {
+  color: #555;
+  font-size: 0.95rem;
+}
+
+code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: #f0f0f0;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+section {
+  margin-top: 2rem;
+  padding: 1.25rem 1.5rem;
+  background: white;
+  border: 1px solid #e2e2e2;
+  border-radius: 6px;
+}
+
+section h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+
+.warning {
+  border-color: #f4a460;
+  background: #fff8f0;
+}
+
+.warning h2 {
+  color: #b8541a;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.row > label {
+  flex: 0 0 8rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.row > input,
+.row > select {
+  flex: 1;
+  min-width: 14rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.row > input[type="password"] {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+
+.row > small {
+  flex-basis: 100%;
+  margin-left: 8.75rem;
+  color: #777;
+  font-size: 0.8rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+th, td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+  vertical-align: middle;
+}
+
+th {
+  background: #f7f7f7;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+td input,
+td select {
+  width: 100%;
+  padding: 0.3rem 0.45rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+}
+
+td input[type="number"] {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  text-align: right;
+}
+
+button {
+  cursor: pointer;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.9rem;
+  border: 1px solid #c0c0c0;
+  background: #f5f5f5;
+  color: #333;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+button:hover {
+  background: #e9e9e9;
+}
+
+button.primary {
+  background: #1a73e8;
+  border-color: #1a73e8;
+  color: white;
+  font-weight: 600;
+  padding: 0.55rem 1.2rem;
+}
+
+button.primary:hover {
+  background: #1763cf;
+}
+
+button.danger {
+  background: #fbe7e7;
+  border-color: #f3b9b9;
+  color: #8a1f1f;
+}
+
+.presets {
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.presets button {
+  margin-left: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.net-balance {
+  margin-left: auto;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  color: #555;
+  font-size: 0.85rem;
+}
+
+.net-balance.balanced {
+  color: #166534;
+}
+
+.net-balance.unbalanced {
+  color: #b8541a;
+  font-weight: 600;
+}
+
+#status-line {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  background: #f4f4f4;
+  color: #555;
+}
+
+#status-line.ok {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+#status-line.fail {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+#results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.result-card {
+  border: 1px solid #e2e2e2;
+  border-radius: 5px;
+  padding: 0.85rem 1rem;
+  background: #fcfcfc;
+}
+
+.result-card.accepted_fact {
+  border-left: 4px solid #4caf50;
+}
+
+.result-card.draft_fact {
+  border-left: 4px solid #f4a460;
+}
+
+.result-card.quarantine {
+  border-left: 4px solid #d32f2f;
+}
+
+.result-card .desc {
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.result-card .grid {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.2rem 0.75rem;
+  font-size: 0.85rem;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  color: #444;
+}
+
+.result-card .grid .label {
+  color: #888;
+  text-align: right;
+}
+
+.result-card .status-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.status-badge.accepted_fact {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.status-badge.draft_fact {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.status-badge.quarantine {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+details {
+  margin-top: 0.75rem;
+}
+
+details summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #555;
+  padding: 0.3rem 0;
+}
+
+pre {
+  background: #1e1e1e;
+  color: #e0e0e0;
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.78rem;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e2e2;
+  font-size: 0.8rem;
+  color: #777;
+  text-align: center;
+}
+
+footer a {
+  color: #1a73e8;
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
