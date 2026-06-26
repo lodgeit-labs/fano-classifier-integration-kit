@@ -2,7 +2,14 @@
 
 **Integration kit for the Fano Classifier** — a new methodology for clearing trial balances via a cascade firewall + rich warning payload. Designed for AI agents and human developers building against the Fano `/ingest/trial_balance` API.
 
-> **Status:** TypeScript SDK + OpenAPI contract + SBRM lexicon shipped (v0.1.1). Canonical examples + methodology docs staged in subsequent releases (η.2, η.3).
+> **Status:** v0.1.2 (η.2) shipped 2026-06-25 — canonical examples + zero-build demo GUI + Daniyal/SamSaam quick-starts; Fano-engine now serves **iter11.B Rev 27** at production (single entity-prefixed classifier + Platt scaling + L3 Prolog firewall). Methodology docs staged at η.3.
+
+## Quick path for adopters
+
+- **Browser playground** — `examples/demo-gui/index.html` is a zero-build HTML/JS app for hitting the production endpoint interactively. Bring your own API key; see `examples/demo-gui/README.md` for the run instructions + CORS note (you'll need a tiny local proxy until Fano-engine ships its own `CORSMiddleware`).
+- **Canonical fixtures** — `examples/canonical-fixtures/` carries three request/response pairs captured at production wire-truth on `2026-06-25T10:59:03Z` (KC1 Bank Accounts, KC2 Drawings firewall polarity, KC6 Loans-to-Beneficiaries sub-floor).
+- **Daniyal (LodgeiT TypeScript stack)** — `npm install github:lodgeit-labs/fano-classifier-integration-kit` and import `FanoClient`. See `examples/README.md` for the 10-line usage snippet.
+- **SamSaam (Depreciation_Transforms FastAPI/Azure)** — generate a Python client from `openapi/fano-classifier.openapi.json` via `openapi-python-client`, or hit the endpoint with plain `curl`. Both paths shown in `examples/README.md`.
 
 ---
 

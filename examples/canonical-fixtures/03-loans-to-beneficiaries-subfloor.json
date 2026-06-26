@@ -1,0 +1,41 @@
+{
+  "$comment": "Canonical KC6 fixture — Loans to Beneficiaries × all 5 entity structures. Captured at production mini-Gauntlet 2026-06-25T10:59:03Z against fano-engine-00032-qan (Rev 27 iter11.B). All 5 PASS at fano_status=draft_fact via SR #4 0.50 sub-floor quarantine (model confidence collapses below threshold for the distributional-tail descriptor).",
+  "load_bearing_invariant": {
+    "rule": "SR #4 0.50 confidence sub-floor (immutable from Brain canon)",
+    "behaviour": "Whenever cascade model confidence < 0.50, the response carries fano_status=draft_fact with quarantine_reason='Sub-floor model confidence (X.XX)' regardless of L3 firewall verdict",
+    "implication_for_consumer": "These rows are 'I don't know with confidence' rows, not 'model says wrong' rows. Surface them for operator review with the model's tentative best-guess + confidence."
+  },
+  "request_template": {
+    "entity_structure": "<one of 5>",
+    "lines": [
+      {
+        "description": "Loans to Beneficiaries",
+        "predicted_code": "sbrm_0000",
+        "source_topology": "current_assets",
+        "confidence": 0.5,
+        "amount": 100.0
+      },
+      {
+        "description": "Sales Income",
+        "predicted_code": "sbrm_4110",
+        "source_topology": "revenue",
+        "confidence": 0.95,
+        "amount": -100.0
+      }
+    ]
+  },
+  "per_entity_empirical_verdict": {
+    "$comment": "All 5 entities returned fano_status=draft_fact via sub-floor quarantine; specific predicted_code/confidence/cascade_topology varies by entity",
+    "company": {
+      "predicted_code": "sbrm_1285",
+      "confidence": 0.326,
+      "cascade_topology": "current_assets",
+      "fano_status": "draft_fact",
+      "quarantine_reason": "Sub-floor model confidence (0.33)"
+    },
+    "trust": "draft_fact via Sub-floor model confidence (similar pattern)",
+    "partnership": "draft_fact via Sub-floor model confidence",
+    "sole_trader": "draft_fact via Sub-floor model confidence",
+    "super_fund": "draft_fact via Sub-floor model confidence"
+  }
+}

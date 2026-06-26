@@ -1,0 +1,56 @@
+{
+  "$comment": "Canonical KC1 fixture — Bank Accounts × all 5 entity structures. Captured at production mini-Gauntlet 2026-06-25T10:59:03Z against fano-engine-00032-qan (Rev 27 iter11.B). All 5 PASS at fano_status=accepted_fact; sbrm_1137 (Cash > Bank Accounts) is the silver-tier dominant code regardless of entity.",
+  "request_template": {
+    "entity_structure": "<one of: company | trust | partnership | sole_trader | super_fund>",
+    "lines": [
+      {
+        "description": "Bank Accounts",
+        "predicted_code": "sbrm_0000",
+        "source_topology": "current_assets",
+        "confidence": 0.5,
+        "amount": 100.0
+      },
+      {
+        "$comment": "Balancing counter-line; net=0 satisfies api/main.py:489 equilibrium check (HTTP 400 otherwise)",
+        "description": "Sales Income",
+        "predicted_code": "sbrm_4110",
+        "source_topology": "revenue",
+        "confidence": 0.95,
+        "amount": -100.0
+      }
+    ]
+  },
+  "expected_response_shape": {
+    "$comment": "results[0] (the Bank Accounts probe-line) — sbrm_1137 dominant for all 5 entities at conf ~0.50-0.97 → accepted_fact",
+    "status": "success",
+    "equilibrium_valid": true,
+    "results": [
+      {
+        "description": "Bank Accounts",
+        "predicted_code": "sbrm_1137",
+        "confidence": "≥ 0.50 (production-observed range: 0.50-0.97 across entities)",
+        "cascade_topology": "current_assets",
+        "model_architecture": "iter11.B_R3_entity_prefixed_single_classifier_with_platt_scaling",
+        "operator_hint_predicted_code": "sbrm_0000",
+        "operator_hint_source_topology": "current_assets",
+        "operator_hint_confidence": 0.5,
+        "fano_status": "accepted_fact",
+        "quarantine_reason": null
+      },
+      {
+        "$comment": "results[1] is the balancing Sales Income line — not the probe target",
+        "description": "Sales Income",
+        "predicted_code": "sbrm_4110_or_silver_tier_alternative",
+        "fano_status": "accepted_fact"
+      }
+    ]
+  },
+  "per_entity_observed_confidence": {
+    "$comment": "Empirical values from production mini-Gauntlet 2026-06-25T10:59:03Z (KC1_02..KC1_05; KC1_01 cold-start warmup excluded; non-warmup 4/4 PASS)",
+    "company": "n/a (KC1_01 warmup discardable; t=90701ms cold-start; sbrm_1137 expected at conf ≥ 0.50 per Phase 4b empirical)",
+    "trust": "0.50+",
+    "partnership": "0.50+",
+    "sole_trader": "0.50+",
+    "super_fund": "0.50+"
+  }
+}

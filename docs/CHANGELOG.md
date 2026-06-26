@@ -2,6 +2,19 @@
 
 All notable changes to `@lodgeit-labs/fano-classifier-client` (the integration kit) are documented here.
 
+## v0.1.2 — 2026-06-25 (η.2)
+
+**Added:**
+
+- `examples/canonical-fixtures/` — three production-wire-truth request/response pairs captured from the 2026-06-25 mini-Gauntlet (KC1 Bank Accounts, KC2 Drawings firewall polarity, KC6 Loans-to-Beneficiaries sub-floor). Each fixture documents both the request template and the empirical per-entity verdict so adopters can dogfood their client integration against known wire-truth.
+- `examples/demo-gui/` — a zero-build static HTML/JS playground for hitting `POST /ingest/trial_balance` interactively. Bring-your-own API key (stored in `localStorage`; never logged or transmitted off-device). Renders results as colour-coded `fano_status` cards. Includes `PROXY.md` template for the 30-line Node CORS proxy you'll need until Fano-engine ships its own `CORSMiddleware`.
+- `examples/README.md` — Daniyal (LodgeiT TypeScript) + SamSaam (Depreciation_Transforms FastAPI/Azure) quick-starts; both stacks shown end-to-end.
+- `docs/architecture.md` §-1 — production architecture note for **iter11.B Rev 27** (the model architecture flip that shipped 2026-06-25 10:55 UTC): L1+L2 cascade collapsed into a single entity-prefixed Platt-scaled classifier; L3 Prolog firewall unchanged; response shape unchanged; `LegacyResponseAdapter` continues to apply correctly.
+
+**Known gap:**
+
+- **No CORSMiddleware at Fano-engine.** Browser-origin demos currently fail at OPTIONS preflight (HTTP 405). Workarounds documented in `examples/demo-gui/PROXY.md`. Next-sprint surface in Brain canon (mirror of the calc-api CORS fix at `clawdog-calculator-api#22` 2026-06-24 — Lesson #66 CANDIDATE).
+
 ## v0.1.1 — 2026-06-21
 
 **Added:**

@@ -1,6 +1,6 @@
 {
   "name": "@lodgeit-labs/fano-classifier-client",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "TypeScript SDK for the Fano Classifier integration kit — typed client + canonical schema + legacy-response adapter for the operator-authoritative response semantic.",
   "license": "Apache-2.0",
   "author": "LodgeiT Labs",

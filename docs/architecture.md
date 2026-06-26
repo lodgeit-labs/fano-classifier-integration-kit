@@ -2,6 +2,20 @@
 
 > Canonical architectural reference for adopting teams. This document is **the contract** between Fano and any consumer (LodgeiT-monolith / Coracle / third-party agents / human developers).
 
+## §-1 Production architecture note (iter11.B Rev 27; 2026-06-25 onwards)
+
+> **This document still describes the architectural model behind the operator-authoritative response semantic (L1 router → L2 specialist → L3 firewall as the conceptual cascade).** That model is unchanged at the response-contract layer — your consumer code reads `fano_status`, `predicted_code`, `cascade_topology`, `quarantine_reason` exactly as documented below.
+>
+> **What changed at the wire on 2026-06-25:** the L1+L2 cascade is now collapsed into a single entity-prefixed neural classifier with Platt-calibrated confidence. The L3 Prolog firewall is unchanged. The response shape your SDK consumes is unchanged. The behaviour you observe is unchanged.
+>
+> Specifically: `predicted_code` still comes from the cascade's reading; `cascade_topology` is now resolved by `resolve_canonical_topology(predicted_code)` from the single classifier output (instead of being routed by an L1 macro-family router); `confidence` is the iter11.B Platt-scaled output; the L3 firewall's `evaluate_drift` query still fires per-row over `(predicted_code, expected_topology, entity_structure)`.
+>
+> The `LegacyResponseAdapter` in `src/adapter.ts` continues to apply correctly.
+>
+> If you want the wire-truth verification: `examples/canonical-fixtures/` contains three real fixtures from the 2026-06-25 production mini-Gauntlet. Run them through your client and you should get the documented response shape.
+>
+> Cross-references (private LodgeiT Labs Brain canon): `memory/fano-iterations.md` §10 iter11.B Phase 4c GREEN closure; `memory/2026-06-25.md` mc12; Lesson #64 PROMOTED.
+
 ## §0 Two-layer responsibility model
 
 Fano operates inside a two-layer responsibility model:
