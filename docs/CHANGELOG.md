@@ -2,6 +2,17 @@
 
 All notable changes to `@lodgeit-labs/fano-classifier-client` (the integration kit) are documented here.
 
+## v0.1.3 — 2026-06-26 (CORS LIVE doc-truth update)
+
+**Changed:**
+
+- **`examples/demo-gui/README.md`** — CORS section flipped from "NOT currently emit CORS headers" + three workarounds → "Fano-engine production emits CORS headers as of 2026-06-26 11:39 UTC" + single path (point demo Base URL at production directly; no proxy required). Fano CORS Phase 5 sprint shipped Rev 28 with `CORSMiddleware` at `api/main.py` (`allow_origins=["*"]`, `allow_methods=["GET", "POST", "OPTIONS"]`, `allow_headers` includes `X-API-Key`, `max_age=3600`). Closure path: hermetic PyTest 3/3 (Phase 5.B) → canary URL browser-origin 4 probes GREEN (Phase 5.C) → production URL browser-origin + 15-probe mini-Gauntlet 14/14 PASS (Phase 5.D) at `fano-engine-00036-zok`.
+- **`docs/CHANGELOG.md`** — v0.1.2 "Known gap" section flipped to "Resolved gap (2026-06-26)".
+- **`examples/demo-gui/PROXY.md`** — preamble adds the production-CORS-LIVE note; PROXY.md retained as optional offline/canary convenience.
+- **`package.json`** — version 0.1.2 → 0.1.3.
+
+**Why the v0.1.2 docs were already factually stale at merge time:** v0.1.2 was authored 2026-06-25 ~12:30 UTC when Fano-engine production was at Rev 27 iter11.B without CORSMiddleware. The Fano CORS Phase 5 sprint shipped to production 2026-06-26 11:39 UTC (~23 hours later). This v0.1.3 update brings the kit's adoption-facing docs to truth-current state so Daniyal and SamSaam (and any external adopter) hit the right wire on first attempt.
+
 ## v0.1.2 — 2026-06-25 (η.2)
 
 **Added:**
@@ -11,9 +22,10 @@ All notable changes to `@lodgeit-labs/fano-classifier-client` (the integration k
 - `examples/README.md` — Daniyal (LodgeiT TypeScript) + SamSaam (Depreciation_Transforms FastAPI/Azure) quick-starts; both stacks shown end-to-end.
 - `docs/architecture.md` §-1 — production architecture note for **iter11.B Rev 27** (the model architecture flip that shipped 2026-06-25 10:55 UTC): L1+L2 cascade collapsed into a single entity-prefixed Platt-scaled classifier; L3 Prolog firewall unchanged; response shape unchanged; `LegacyResponseAdapter` continues to apply correctly.
 
-**Known gap:**
+**Known gap at authoring time (RESOLVED 2026-06-26 — see v0.1.3 entry above):**
 
-- **No CORSMiddleware at Fano-engine.** Browser-origin demos currently fail at OPTIONS preflight (HTTP 405). Workarounds documented in `examples/demo-gui/PROXY.md`. Next-sprint surface in Brain canon (mirror of the calc-api CORS fix at `clawdog-calculator-api#22` 2026-06-24 — Lesson #66 CANDIDATE).
+- ~~**No CORSMiddleware at Fano-engine.** Browser-origin demos currently fail at OPTIONS preflight (HTTP 405). Workarounds documented in `examples/demo-gui/PROXY.md`. Next-sprint surface in Brain canon (mirror of the calc-api CORS fix at `clawdog-calculator-api#22` 2026-06-24 — Lesson #66 CANDIDATE).~~
+- **Resolved 2026-06-26 11:39 UTC:** Fano CORS Phase 5 sprint shipped to production. Lesson #66 PROMOTED at sprint kickoff; empirically closed Fano-side at production URL via the 3-leg ladder. v0.1.3 above flips the demo GUI docs to truth-current.
 
 ## v0.1.1 — 2026-06-21
 

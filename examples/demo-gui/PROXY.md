@@ -1,9 +1,24 @@
-# Local CORS-permissive proxy for the Fano demo GUI
+# Local CORS-permissive proxy for the Fano demo GUI (OPTIONAL as of 2026-06-26)
+
+**Note (2026-06-26):** Fano-engine production now emits CORS headers natively
+(Fano CORS Phase 5 sprint shipped Rev 28 with `CORSMiddleware` at 2026-06-26
+11:39 UTC). For normal adopter work, point the demo Base URL directly at
+`https://fano-engine-afmurhqkaq-ts.a.run.app` — no proxy required.
+
+This PROXY.md template is retained as an OPTIONAL convenience for:
+
+- **CI / fixture-capture** — deterministic recording of request/response pairs
+  without dragging in production-CORS state
+- **Air-gapped reproduction** — mirror production behaviour behind a local
+  proxy that you can pause / inspect / instrument
+- **Pre-production canary work** — if a future Fano canary revision is
+  deployed at `--no-traffic` and is testing a CORS variant, the proxy lets
+  you hit it via a tag-routed URL without browser-CORS friction
 
 A 30-line Node script that lets the demo GUI (running at `http://localhost:8000`)
-talk to production Fano (`https://fano-engine-afmurhqkaq-ts.a.run.app`) without
-hitting the browser CORS gate. The proxy lives on your machine only; it adds
-`Access-Control-Allow-*` headers to Fano's response so the browser unblocks it.
+talk to production Fano (`https://fano-engine-afmurhqkaq-ts.a.run.app`) by adding
+`Access-Control-Allow-*` headers to Fano's response. The proxy lives on your
+machine only.
 
 ## proxy.mjs
 
