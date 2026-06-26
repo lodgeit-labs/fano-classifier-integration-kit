@@ -18,22 +18,19 @@ response wire-truth before they build their own consumer surface.
 - Shows raw request + raw response JSON in collapsible `<details>` panels
 - API key + base URL persisted in `localStorage` (BYO key; nothing logged)
 
-## CORS (read this)
+## CORS
 
-Fano-engine at the production URL does **NOT currently emit CORS headers**.
-A browser hitting it from a different origin will fail at OPTIONS preflight
-(HTTP 405). Three workarounds for the demo:
+**Fano-engine production emits CORS headers as of 2026-06-26 11:39 UTC** (Fano
+CORS Phase 5 sprint shipped Rev 28 with `CORSMiddleware`: `allow_origins=["*"]`,
+`allow_methods=["GET", "POST", "OPTIONS"]`, `allow_headers` includes
+`X-API-Key`, `max_age=3600`). Point the demo Base URL directly at
+`https://fano-engine-afmurhqkaq-ts.a.run.app` and it works — no proxy required.
 
-1. **Local CORS-permissive proxy** (recommended) — see `PROXY.md` for a 30-line
-   Node script. Point Base URL at `http://localhost:8787` in the demo; the
-   proxy forwards to Fano and echoes CORS headers.
-2. **Disable browser CORS** (local-only, single-purpose profile) — launch Chrome
-   with `--disable-web-security --user-data-dir=/tmp/chrome-cors`. Never use that
-   profile for general browsing.
-3. **Wait for the Fano CORS sprint** — the natural next-sprint surface (mirror
-   of the calc-api CORS fix at `clawdog-calculator-api#22` 2026-06-24). Once
-   `CORSMiddleware` lands at `api/main.py` and Fano redeploys via the
-   canary + atomic-flip ladder, this demo runs against production with no proxy.
+If you ever need to inspect or capture the wire-truth offline (e.g. CI fixtures,
+air-gapped reproduction, or pre-production canary work where CORS is not yet
+enabled on a particular revision), the `PROXY.md` template still ships in this
+directory as an optional convenience. For normal adopter work against production,
+it is no longer needed.
 
 ## Running it (local)
 
