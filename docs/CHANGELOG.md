@@ -2,6 +2,37 @@
 
 All notable changes to `@lodgeit-labs/fano-classifier-client` (the integration kit) are documented here.
 
+## v0.1.4 — 2026-08-24 (trial-readiness framing pass)
+
+**Added:**
+
+- **`docs/what-to-measure.md`** — the benchmark-of-record artefact for iter11.B R3 in production. Defines the four rates (A acceptance / B warning-triage / C quarantine / integrity check A+B+C=100%) computable from Fano's JSON output plus the load-bearing fifth number (20-row operator-agreement rate requiring senior-accountant review). Names anti-patterns (A>95%, C>20%, operator-agreement<10/20) that indicate real problems. Explains why the first consumer trial is the reference-point-of-record: iter11.B R3 entered production 2026-06-25 without a published performance comparison against the cascade it replaced.
+- **`docs/pre-flight-canary.md`** — three-step canary using wire-truth error signatures to disambiguate the five common failure modes (dead service / wrong service / bad key / bad schema / valid Fano rejection). Step 1 (no key required) exploits the malformed-JSON-body path to verify service liveness. Step 2 exercises auth via same path with key. Step 3 fires canonical fixture 01 (KC1 Bank Accounts) as the end-to-end canary. All error signatures WIRE-VERIFIED 2026-08-24 against production.
+- **`docs/response-schema-proposal.md`** — proposed JSON Schema for the `POST /ingest/trial_balance` response body, reconstructed from `docs/architecture.md` prose + `examples/canonical-fixtures/*.json` observed shapes + live wire probes. Consumer OpenAPI codegen currently produces untyped responses (`schema: {}` in live openapi.json); this proposal is the input for Fano-engine-side codification once ratified against `api/main.py`. Status: PROPOSAL, not adopted.
+- **README.md** top-fold: framing subtitle reframing Fano as an SBRM classification firewall (admission gate over upstream classifiers) rather than a classifier. Four-item "Do not confuse these" disambiguation block covering (1) two live Cloud Run services (fano-engine vs stale fano-classifier), (2) two repos (public integration-kit vs private predecessor), (3) two model architectures (iter11.B R3 current vs L1→L2→L3 retired), (4) two threshold semantics (Platt-scaled vs raw softmax). Each pair carries the discriminator that distinguishes them on the wire.
+
+**Changed:**
+
+- **README.md** §"What is Fano?" — first sentence flipped from "stateless cascade classifier and firewall" to "stateless SBRM classification firewall (admission gate over upstream classification, not a classifier itself)." This corrects the framing at the load-bearing first-read surface. The "cascade" architecture description is generalised ("single entity-prefixed classifier (post-iter11.B; pre-iter11.B this was L1 → L2)") so the paragraph is truth-current against iter11.B without invalidating pre-iter11.B references.
+- **README.md** §"Reference architecture" — pointer added to `docs/response-schema-proposal.md` for the response-side of the API contract; note that `docs/architecture.md §-1` describes the iter11.B current architecture while the rest of that document describes the unchanged response-contract layer.
+- **README.md** status banner — v0.1.4 shipped date + trial-readiness additions inventory.
+- **`package.json`** version 0.1.3 → 0.1.4.
+
+**Why now:**
+
+Daniyal's team is imminent as the first-adopter consumer trial. Assessment prep (mc16, 2026-08-24) identified three load-bearing gaps:
+
+1. The framing surface guided a fresh consumer toward interpreting Fano as a classifier and evaluating it by "does Fano's code match my code" — measuring the upstream classifier, not Fano. The framing paragraph + `docs/what-to-measure.md` intervene at the earliest possible read.
+2. The kit's checked-in performance claims (97.3% / 75% / 21% from Spike-3 era) do not apply to iter11.B R3. iter11.B R3 in fact has NO published performance benchmark yet. Daniyal's run becomes the benchmark of record. `docs/what-to-measure.md` §"Why this is the benchmark of record" states this explicitly.
+3. The disambiguation surface prevents four common failure modes (stale-service misroute, wrong-repo, architecture-conflation, threshold-semantic-conflation) that would otherwise land as "docs are wrong" issues.
+
+No Fano-engine mutations. No deploy. No threshold changes. All additions are kit-side framing.
+
+**Cross-references (Brain-side; private):**
+
+- `memory/2026-08-24-mc16-fano-consumer-trial-readiness.md` — the full readiness assessment.
+- `memory/2026-08-24.md` §mc16 — standalone gap banking: no published performance figures for iter11.B R3.
+
 ## v0.1.3 — 2026-06-26 (CORS LIVE doc-truth update)
 
 **Changed:**
