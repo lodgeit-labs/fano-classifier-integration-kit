@@ -1,8 +1,70 @@
 # fano-classifier-integration-kit
 
-**Integration kit for the Fano Classifier** — a new methodology for clearing trial balances via a cascade firewall + rich warning payload. Designed for AI agents and human developers building against the Fano `/ingest/trial_balance` API.
+**Integration kit for Fano — an SBRM classification firewall (an admission gate over upstream classifiers, not a classifier itself).**
 
-> **Status:** v0.1.2 (η.2) shipped 2026-06-25 — canonical examples + zero-build demo GUI + Daniyal/SamSaam quick-starts; Fano-engine now serves **iter11.B Rev 27** at production (single entity-prefixed classifier + Platt scaling + L3 Prolog firewall). Methodology docs staged at η.3.
+Fano decides whether a trial-balance row is structurally legal under SBRM and whether the classification you already assigned looks right. It does not classify from scratch. The `fano-classifier` name in this repo, npm package, and Cloud Run service is a legacy — the wire behaviour is firewall + admission-gate. Read `## Before you run Fano` below before your first submission.
+
+> **Status:** v0.1.4 shipped 2026-08-24 — trial-readiness framing pass. Fano-engine production serves **iter11.B Rev 27** (single entity-prefixed classifier + Platt scaling + L3 Prolog firewall) with CORS Phase 5 live since 2026-06-26. Trial-readiness additions: framing paragraph below, `docs/what-to-measure.md`, `docs/pre-flight-canary.md`, `docs/response-schema-proposal.md`. Methodology docs remain staged at η.3.
+
+---
+
+## Before you run Fano
+
+**How you measure Fano determines whether your run produces a useful signal or a wrong verdict about a working system.**
+
+Fano is not a classifier. Your upstream pipeline (source chart-of-accounts, bookkeeper decision, or upstream ML classifier) has already assigned each line item a `(predicted_code, source_topology)` — Fano's job is to check that assignment against SBRM structural rules + a cascade's independent reading, and either **accept** it (`accepted_fact`), **flag it for review** (`draft_fact` with warnings), or **quarantine** it (rejected as structurally illegal). If you evaluate Fano by measuring "how often did Fano's code match my code," you are measuring your upstream classifier's accuracy — not Fano's. Read [`docs/what-to-measure.md`](docs/what-to-measure.md) for the four numbers to compute plus the load-bearing 20-row operator-agreement sample.
+
+**Your run is the benchmark of record.** iter11.B R3 (the current production architecture) entered production 2026-06-25 without a published performance comparison against the cascade it replaced. The pre-iter11.B figures you may have read (97.3% structural-harness pass; 21% end-to-end classification) measured a different architecture and do not apply. Your run — specifically its 20-row operator-agreement sample — is the first performance evidence for iter11.B R3 in production and will be referenced by every future calibration. Please treat the scoring accordingly. See [`docs/what-to-measure.md`](docs/what-to-measure.md) §"Why this is the benchmark of record."
+
+**Default data-handling posture for the first trial:** submit synthetic or fully sanitised data on your first dataset, regardless of whether your subsequent datasets are real. The first run establishes the wire and catches integration defects; do that against data whose exposure risk is zero. Governance decisions about real-client data belong before real-client data hits the wire, not after.
+
+**Pre-flight before your first real submission:** [`docs/pre-flight-canary.md`](docs/pre-flight-canary.md) walks a three-step canary that disambiguates dead-service / wrong-service / bad-key / bad-schema / valid-Fano-rejection — all five of which currently look identical from the client without the canary.
+
+---
+
+## Do not confuse these (Fano has doubles)
+
+Each of the four pairs below is a chance to land on the wrong artefact and blame the docs. If you see behaviour that contradicts this repo, first check whether you are talking to the wrong half of one of these pairs.
+
+### 1. Two live Cloud Run services
+
+| ✅ Use this | ❌ Not this |
+|---|---|
+| `https://fano-engine-79859053141.australia-southeast1.run.app` (or the hash-form alias `https://fano-engine-afmurhqkaq-ts.a.run.app` — same service, both work) | `https://fano-classifier-79859053141.australia-southeast1.run.app` |
+| Rev 27 iter11.B + CORS Phase 5 (CURRENT) | v0.1.0 (STALE, still up for legacy reasons) |
+| Request body: `{entity_structure, lines[]}` | Request body: `{entity_structure, entries[]}` (different schema) |
+| OpenAPI title: `"Fano-Constraint API"` | OpenAPI title: `"Fano-Constraint SBRM Classifier - Batched Subprocess Cascade"` |
+| Requires `X-API-Key` header | Currently unauthenticated |
+
+**Discriminator:** send a deliberately-empty POST body (`-d '{}'`). Fano-engine returns HTTP 403 `{"detail":"Not authenticated"}` (auth-first). The stale service returns HTTP 422 with `"loc":["body","entries"]` in the validation error — the `entries` field name IS the giveaway. See [`docs/pre-flight-canary.md`](docs/pre-flight-canary.md) Step 1 for the full disambiguation table.
+
+### 2. Two repos with almost-identical names
+
+| ✅ Use this | ❌ Not this |
+|---|---|
+| `lodgeit-labs/fano-classifier-integration-kit` (PUBLIC) | `lodgeit-labs/fano-classifier-integration` (PRIVATE, superseded) |
+| This repo. Contains v0.1.0–0.1.4. | Predecessor kit, v0.1.0 + v0.1.1 only, pushed 2026-05-13 last. Not maintained. |
+
+### 3. Two model architectures
+
+| ✅ Current | ❌ Retired |
+|---|---|
+| iter11.B R3 — single entity-prefixed classifier + Platt scaling + L3 Prolog firewall | L1 ONNX router → L2 ONNX specialist → L3 Prolog firewall |
+| Live since 2026-06-25 10:55 UTC on `fano-engine-00032-qan` and successors | Live pre-2026-06-25 |
+| Reported in `results[0].model_architecture` field as `"iter11.B_R3_entity_prefixed_single_classifier_with_platt_scaling"` | Referenced in older PR discussion + earlier CHANGELOG entries |
+
+**Consequence for benchmarks:** any performance figure quoted against the retired cascade (97.3% at conf ≥0.85; 21% end-to-end classification accuracy; 75% live-traffic acceptance) does not apply to iter11.B. See `docs/architecture.md` §-1 for the architecture change note, and [`docs/what-to-measure.md`](docs/what-to-measure.md) for what to measure against the current architecture.
+
+### 4. Two threshold semantics
+
+| ✅ Current | ❌ Retired |
+|---|---|
+| Confidence values in responses are **Platt-scaled** (calibrated via `CalibratedClassifierCV(method='sigmoid')` at iter11.B) | Confidence values in earlier canon were raw softmax outputs |
+| A `confidence: 0.87` is a calibrated probability estimate | A `confidence: 0.87` was a raw model output |
+
+**Consequence:** the nominal confidence threshold `0.50` documented in older canon is a Platt-scaled 0.50, not a raw-softmax 0.50. Sub-floor abstention behaviour at that threshold has not been re-anchored empirically on the current architecture. Treat sub-floor thresholds as "nominal 0.50 pending empirical re-anchor" for the trial and record the actual observed abstention-trigger threshold if your data hits it — that observation is useful for calibrating future canon.
+
+---
 
 ## Quick path for adopters
 
@@ -15,11 +77,11 @@
 
 ## What is Fano?
 
-Fano is a **stateless cascade classifier and firewall** for trial-balance line-item ingestion. It's not a black-box classifier — it's a structured pipeline that:
+Fano is a **stateless SBRM classification firewall** for trial-balance line-item ingestion. It is an admission gate over an upstream classification, not a classifier itself. Concretely, Fano:
 
 1. **Respects operator wire-truth.** The `(predicted_code, source_topology, entity_structure)` tuple submitted at `/ingest/trial_balance` is treated as authoritative — Fano never silently overrides what the operator submitted.
-2. **Produces an independent cascade reading.** L1 (ONNX router) → L2 (ONNX specialist per L1 domain) → L3 (Prolog firewall on SBRM physics).
-3. **Emits structured warnings on disagreement.** When the cascade's reading differs from the operator's submission, Fano emits a rich warning payload carrying the cascade's alternate hypothesis, the disagreement reason (SBRM rule + L1/L2 signal breakdown), and a suggested repair-journal entry the operator can review.
+2. **Produces an independent cascade reading.** A single entity-prefixed classifier (post-iter11.B; pre-iter11.B this was L1 → L2) produces an alternate reading; an L3 Prolog firewall over SBRM physics decides whether the row is structurally legal.
+3. **Emits structured warnings on disagreement.** When the cascade's reading differs from the operator's submission, Fano emits a rich warning payload carrying the cascade's alternate hypothesis, the disagreement reason (SBRM rule ID + classifier signal breakdown), and a suggested repair-journal entry the operator can review.
 
 This is the **operator-authoritative architecture**: the source chart-of-accounts (QBO / Xero / MYOB / etc.) remains the structural source-of-truth; Fano provides commentary, not corrections.
 
@@ -69,12 +131,13 @@ fano-classifier-integration-kit/
 
 ## Reference architecture
 
-The canonical architecture document is at [`docs/architecture.md`](docs/architecture.md). It establishes:
+The canonical architecture document is at [`docs/architecture.md`](docs/architecture.md). Note §-1 in that document describes the current iter11.B R3 architecture (single entity-prefixed classifier + Platt scaling + L3 firewall); the rest of the document describes the response-contract layer, which is unchanged from pre-iter11.B.
 
 - **Layer 1a — Operator wire-truth (AUTHORITATIVE).** What you submit is what comes back.
 - **Layer 1b — Cascade independent reading (ADVISORY).** What Fano thinks ships alongside.
 - **Five warning kinds** — `topology_disagreement`, `code_disagreement`, `code_consolidation`, `entity_conditional_drift`, `subfloor_abstention`.
 - **Rich warning payload schema** — each warning carries `cascade_alternate_hypothesis`, `disagreement_reason`, `suggested_repair_journal`.
+- **Response schema (proposal, not yet ratified)** — [`docs/response-schema-proposal.md`](docs/response-schema-proposal.md) reconstructs the response body from prose + fixtures for codification into the upstream OpenAPI. Until ratified, `openapi/fano-classifier.openapi.json` declares the response as untyped.
 
 ## API surface
 
