@@ -4,6 +4,25 @@ All notable changes to `@lodgeit-labs/fano-classifier-client` (the integration k
 
 ## v0.1.5 — 2026-08-25 (response schema ratified against wire truth)
 
+### Amendment before merge (Fable ∮-RULING 2026-08-25 03:11 UTC)
+
+Fable ratified the v0.1.5 shape with one amendment applied before merge:
+
+**1. Split `docs/what-to-measure.md` metric B into B1 + B2.** Under the wire-truth branch structure, `fano_status == "draft_fact"` covers two opposite meanings that had been folded into a single "Non-accepted-verdict" counter:
+
+- **B1 — Sub-floor abstention** (`quarantine_reason` starts with `"Sub-floor model confidence"`): the model was not confident. A model-quality signal.
+- **B2 — Structural rejection** (`quarantine_reason` starts with `"Entity/Topological Drift"`): the model WAS confident and the L3 firewall overruled it. **This is Fano performing its core function** — the metric that measures what Fano is FOR. Without a B2 counter the trial cannot measure the thing Fano exists to measure.
+
+Integrity check becomes `A + B1 + B2 + C = 100%`. Ranges declared ATTRIBUTED-BELIEF (no prior benchmark on iter11.B R3; Daniyal's run establishes the empirical baseline). Case 2b (`B2 = 0` systematically) and Case 4b (weak operator-agreement on B2 sub-sample specifically) added to bad-run diagnostics. Operator-agreement sampling now stratifies to guarantee at least 3 rows from B2 in the 20-row sample. Load-bearing text at the bottom of `docs/what-to-measure.md` §"Why this is the benchmark of record" adds a paragraph stating B2 is the metric that measures what Fano is FOR.
+
+**2. Promote Pydantic 422 body-echo from CAVEAT to INSTRUCTION** in `docs/pre-flight-canary.md` §"Logging discipline". Consumers need the instruction, not the observation. Wording:
+
+> **Consumer instruction: do not log 422 response bodies.** A malformed payload returns the offending input inside the error response, and error responses are logged by default in most HTTP clients (curl `-v`, most SDKs, most middleware). If your client logs response bodies on non-2xx unconditionally, sensitive `line.description` content from the request will end up in your logs via the 422 response.
+
+Concrete guidance for HTTP-client configuration + structured-logging-pipeline configuration + client-side-validation-as-load-bearing-defence added.
+
+### Amendment: end. Body of v0.1.5 entry below.
+
 **Load-bearing:** the response documentation now matches what the running Fano-engine emits. Prior versions (v0.1.0–v0.1.4) documented an aspirational structured warning-payload architecture (five canonical warning kinds + rich `warnings[]` array with `cascade_alternate_hypothesis` / `disagreement_reason` / `suggested_repair_journal`) that Rev 27 Phase 4a Path α does not implement on the wire. That design was decommissioned as an unnoted side effect of the June 2026 L1+L2 cascade collapse. This release brings the kit's response documentation to wire truth. Historical context lives in the private Brain canon (`memory/rev27-warning-loss-decision-record.md`) with a review trigger for if per-layer disagreement signals ever return.
 
 **Ratified against** `~/fano_engine/api/main.py` sha256 `8d07ab84302e4c3f98dc7bfbd9c4ecaf32158741e2cbe7a50a19ee31fda6edc6` (648 lines) via two Streamace forensic turns:

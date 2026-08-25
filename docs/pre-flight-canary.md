@@ -222,13 +222,30 @@ request-body logging behaviour (Brain-side wire-forensic 2026-08-24 mc16):
   exception handler (Starlette's `ExceptionMiddleware`) can surface request-body fragments in
   a stack trace on unhandled 500 errors. The wire-truth grep covered `api/main.py` but did
   not cover Starlette middleware or FastAPI's built-in exception handling.
-- ⚠ **Pydantic 422 validation errors DO echo request-body content** in the response body
+- 🔴 **Pydantic 422 validation errors DO echo request-body content** in the response body
   (default FastAPI behaviour). Each validation-error detail contains an `input` field with
   the offending value. If sensitive strings live in `line.description` and you submit a
-  malformed payload, that content lands in the 422 response AND in the Cloud Run
-  request-response log.
+  malformed payload, that content lands in the 422 response.
 
-**Practical guidance for consumers:**
+**⚠ Consumer instruction: do not log 422 response bodies.**
+
+A malformed payload returns the offending input inside the error response, and error responses
+are logged by default in most HTTP clients (curl `-v`, most SDKs, most middleware). If your
+client logs response bodies on non-2xx unconditionally, sensitive `line.description` content
+from the request will end up in your logs via the 422 response.
+
+Concrete guidance:
+
+- If you use an HTTP client that logs response bodies on non-2xx by default, either configure
+  it to suppress body logging on 422 specifically, OR strip the `input` field from the 422
+  response before logging.
+- Structured logging pipelines (Cloud Logging, Datadog, ELK) commonly capture response bodies
+  under `httpResponse.responseBody` or equivalent — confirm your pipeline configuration does
+  not persist 422 error bodies.
+- Client-side validation before submission is the load-bearing defence: catch malformed input
+  before it becomes a 422 response.
+
+**Practical guidance for consumers on Cloud Run request-response logging:**
 
 - Cloud Run request-response logging captures method + path + status + latency + IP +
   timestamp by default (not body content in the accepted-request path).
