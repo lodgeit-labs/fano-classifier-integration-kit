@@ -25,7 +25,7 @@ over the N rows you submitted:
 ### A. Acceptance rate
 
 ```
-A = count(rows where fano_status == "accepted_fact" AND (warnings == [] OR warnings absent)) / N
+A = count(rows where fano_status == "accepted_fact") / N
 ```
 
 Share of rows Fano cleared as **structurally legal AND cascade-agreeing**. These are the rows
@@ -40,40 +40,58 @@ Anchors for this range (ATTRIBUTED-BELIEF):
   the 100-row PROD sample.
 - The 60–85% expected range brackets the "typical real-world" prior between these anchors.
 
-### B. Warning-triage rate
+### B. Non-accepted-verdict rate
 
 ```
-B = count(rows where fano_status == "draft_fact" AND warnings != []) / N
+B = count(rows where fano_status == "draft_fact") / N
 ```
 
-Share of rows Fano cleared as structurally legal but where the cascade has an alternate
-hypothesis. **This is not a failure — it is the operator-review queue Fano is designed to
-feed.**
+Share of rows Fano flagged as needing operator review. Two sub-paths feed this rate: sub-floor
+abstention (cascade lacked confidence, `quarantine_reason` starts with `"Sub-floor model
+confidence"`) and L3 firewall rejection (structural rule violation, `quarantine_reason` starts
+with `"Entity/Topological Drift"`). **This is not a failure — it is the operator-review queue
+Fano is designed to feed.**
 
 **Expected range: 10–30%.**
 
 High B is not a Fano defect. High B means Fano is doing what it was built to do: surfacing
-rows where a senior accountant should have a look. The value Fano delivers is the
-`warnings[].cascade_alternate_hypothesis` + `disagreement_reason` + `suggested_repair_journal`
-on these rows — not the acceptance rate.
+rows where a senior accountant should have a look. To sub-route B, inspect the
+`quarantine_reason` string content: sub-floor rows want hand-classification; drift rows want
+investigation of the operator-vs-cascade classification disagreement (which is now surfaced
+via the difference between `predicted_code` and `operator_hint_predicted_code`, not via
+structured warning fields).
 
-### C. Quarantine rate
+**Historical note:** earlier kit versions (v0.1.0–0.1.4) described this as "Warning-triage
+rate" and expected a structured `warnings[]` array with five canonical kinds. That structured
+payload is not implemented on the wire; see `docs/architecture.md` §6 for the historical
+context. The A/B/C rate discipline still works exactly the same way — you're just reading
+`fano_status` + `quarantine_reason` string instead of a `warnings[]` array.
+
+### C. Quarantine (Prolog timeout) rate
 
 ```
 C = count(rows where fano_status == "quarantine") / N
 ```
 
-Share of rows Fano rejected as **structurally illegal under SBRM**. The L3 Prolog firewall
-identified an SBRM rule violation and refused to accept the row.
+⚠ **Naming trap.** Despite the enum value name, `fano_status == "quarantine"` fires ONLY on
+Prolog subprocess timeout (`subprocess.TimeoutExpired`; 2-second timeout budget). This is a
+**substrate-health signal**, NOT an "L3 firewall rejected as structurally illegal" signal.
+Structural rejections come back as `draft_fact` under B (with `quarantine_reason` starting
+with `"Entity/Topological Drift"`).
 
-**Expected range: 1–10% on well-formed data.**
+See `docs/architecture.md` §2 branch 4 and `docs/response-schema.md` `fano_status` enum for
+full semantic detail.
 
-If C is high (>15%), the interpretation depends on the dataset:
-- If your data is a fresh mid-migration extract from an accounting system that was itself
-  inconsistent, high C is Fano correctly flagging pre-existing garbage. That is Fano working.
-- If your data is from a clean, mature ledger and C is still >15%, either the ledger is
-  hiding structural inconsistencies your firm did not know about, or Fano is over-quarantining
-  (rare — the L3 firewall is conservative by design).
+**Expected range: 0–2% on well-formed data.** A well-provisioned Fano deployment on typical
+inputs should virtually never time out. Persistent C > 5% is a substrate-health signal, not a
+data-quality signal:
+
+- If C spikes on a specific row and retry succeeds, that's noise (transient Prolog scheduling).
+- If C is persistent on the same row across retries, the Prolog query for that row is
+  pathologically slow — report as a `service-defect` with the row's `predicted_code` +
+  `entity_structure` (the two arguments to the firewall query) so LodgeiT Labs can trace it.
+- If C is broadly elevated across many rows, Fano's Prolog engine is under-provisioned or
+  the SBRM physics have grown to exceed the 2s timeout budget — escalate to LodgeiT Labs.
 
 ### The integrity check
 
@@ -94,7 +112,7 @@ For that, you need a senior accountant.
 
 ### How to compute it
 
-1. **Sample 20 rows** from the union of B (warnings) and C (quarantine). If B + C < 20 rows,
+1. **Sample 20 rows** from the union of B (non-accepted draft_fact) and C (quarantine). If B + C < 20 rows,
    sample all of them.
 2. **A senior accountant reviews each row without seeing Fano's verdict first.** They
    independently decide what they would do with the row: accept, review, or reject.
@@ -115,8 +133,8 @@ where Fano is making non-trivial calls; those are where agreement matters.
 | Metric | Range |
 |---|---|
 | A (acceptance) | 60–85% |
-| B (warning-triage) | 10–30% |
-| C (quarantine) | 1–10% |
+| B (non-accepted-verdict) | 10–30% |
+| C (Prolog-timeout quarantine) | 0–2% |
 | Operator-agreement | ≥14/20 on B+C sample |
 | A + B + C | Exactly 100% |
 
@@ -130,11 +148,14 @@ Either your upstream data is exceptionally clean (possible on a fresh, curated f
 unlikely on real accounting data at scale), or the L3 firewall is not engaging. Report as a
 `service-defect`.
 
-**Case 2: C > 20%.**
-Fano is over-quarantining OR your data is structurally poor. Look at three rows from C. If a
-senior accountant agrees the rows are structurally illegal, this is a data quality signal, not
-a Fano defect. If the accountant disagrees, report as a `service-defect` — the L3 firewall
-may have a rule firing incorrectly.
+**Case 2: C > 5% (persistent).**
+Fano's Prolog subprocess is timing out at more than a substrate-noise rate. This is a
+substrate-health signal, not a data-quality signal (see §C above). If C is broadly elevated
+across many rows, escalate to LodgeiT Labs. If C spikes on specific rows that persist under
+retry, report as `service-defect` with the row's `predicted_code` + `entity_structure`. If B
+(non-accepted-verdict) is high but C is normal, that's a structural-rule signal on your
+data — look at three `draft_fact` rows from B with `"Entity/Topological Drift"` strings and
+have a senior accountant judge whether the rejections are correct.
 
 **Case 3: A + B + C ≠ 100%.**
 Schema-parse issue in your client OR Fano is emitting an undocumented shape. Report as a
@@ -178,7 +199,7 @@ label. Include:
 - The five numbers.
 - The 20-row sample with per-row Fano verdict + operator verdict + one-sentence rationale
   where they disagreed.
-- Any anomalies (undocumented warning kinds, unexpected HTTP codes, malformed JSON in
+- Any anomalies (undocumented `quarantine_reason` string shapes, unexpected HTTP codes, malformed JSON in
   responses).
 - The `model_architecture` string returned in `results[0].model_architecture` — this pins
   the benchmark to a specific service revision so future comparisons are meaningful.

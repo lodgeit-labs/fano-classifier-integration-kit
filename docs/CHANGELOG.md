@@ -2,6 +2,55 @@
 
 All notable changes to `@lodgeit-labs/fano-classifier-client` (the integration kit) are documented here.
 
+## v0.1.5 — 2026-08-25 (response schema ratified against wire truth)
+
+**Load-bearing:** the response documentation now matches what the running Fano-engine emits. Prior versions (v0.1.0–v0.1.4) documented an aspirational structured warning-payload architecture (five canonical warning kinds + rich `warnings[]` array with `cascade_alternate_hypothesis` / `disagreement_reason` / `suggested_repair_journal`) that Rev 27 Phase 4a Path α does not implement on the wire. That design was decommissioned as an unnoted side effect of the June 2026 L1+L2 cascade collapse. This release brings the kit's response documentation to wire truth. Historical context lives in the private Brain canon (`memory/rev27-warning-loss-decision-record.md`) with a review trigger for if per-layer disagreement signals ever return.
+
+**Ratified against** `~/fano_engine/api/main.py` sha256 `8d07ab84302e4c3f98dc7bfbd9c4ecaf32158741e2cbe7a50a19ee31fda6edc6` (648 lines) via two Streamace forensic turns:
+- turn-01 2026-08-24 12:36 UTC — field-by-field grep of the 12 proposed schema fields.
+- turn-02 2026-08-25 02:39 UTC — full response-construction block dump (lines 540–648) with branch-coverage grep.
+
+Both outboxes wire-authoritative on `streamace-comms@main:outbox/2026-08-2{4,5}-fano-response-schema-*/turn-0{1,2}.out.md`. Substrate sha256 verified identical between the two forensic turns (no drift during the two-day window).
+
+**Removed:**
+
+- `docs/response-schema-proposal.md` — the aspirational schema is deleted. Git history preserves it.
+- `docs/architecture.md` §2–§4 five-warning-kinds table + rich warning-payload YAML schema — replaced with a wire-truth §2 "Response construction — four branches" section describing the four actual response branches (Sub-floor / L3 PASS / L3 FAIL / L3 TIMEOUT) at exact `api/main.py` line numbers.
+- `docs/getting-started.md` §"When you see a warning" — replaced with §"When Fano flags or rejects a row" describing the four wire branches.
+
+**Added:**
+
+- `docs/response-schema.md` — the ratified response contract (11.9 KB). Full `TrialBalanceResponse` + `LineResult` schemas with wire line-number citations. Documents the four `quarantine_reason` string shapes. Documents the `"quarantine"` naming trap explicitly (it fires only on Prolog subprocess timeout, NOT on SBRM structural rejection). Documents the OpenAPI codification gap (`schema: {}` on live `/openapi.json` because no `response_model=` kwarg on the endpoint decorator). Provenance header pins substrate sha256 + ratification-date chain.
+- `docs/pre-flight-canary.md` §"Logging discipline (framework-caveat)" — corrects the SR #2 disposition from blanket CLEAN to scoped CLEAN: application-layer logging verified clean by grep, framework-level exception handlers (Starlette middleware) NOT independently verified, Pydantic 422 validation errors DO echo request-body content in the response by default FastAPI behaviour. Names the free-text-description pattern for consumers using sanitised data and enumerates three questions to confirm with dataset preparers.
+- `docs/architecture.md` §6 — historical note explaining the pre-Rev-27 warning-payload design + pointer to the review trigger in `memory/rev27-warning-loss-decision-record.md`.
+
+**Changed:**
+
+- `docs/architecture.md` — near-complete rewrite. New §0 "What Fano is" opens with wire truth. New §2 "Response construction — four branches" documents each branch with wire line numbers + `quarantine_reason` string shape. New §5 "Logging discipline" carries the framework-caveat SR #2 disposition. §1 (two-layer responsibility model) preserved. Old §0 (production architecture note) folded into ratification provenance header.
+- `docs/getting-started.md` — mental model third sentence rewritten (removed warnings framing; added `fano_status` + `quarantine_reason` framing). Minimal-example expected response updated to match wire (flat `predicted_code` / `confidence` / `cascade_topology` fields instead of the `cascade` sub-object; `operator_hint_*` fields for echoed operator submission; no `warnings` field). New §"When Fano flags or rejects a row" describes the four wire branches with operational routing guidance + names the `"quarantine"` naming trap defensively. Operator-review-pattern diagram updated to route on `fano_status != accepted_fact` rather than `warnings != []`.
+- `docs/what-to-measure.md` — B rate renamed from "Warning-triage rate" to "Non-accepted-verdict rate"; description updated to describe the two sub-paths that feed B (sub-floor abstention + L3 firewall rejection) with `quarantine_reason` string content as the sub-routing key. C rate renamed to "Quarantine (Prolog timeout) rate"; expected range narrowed 1–10% → 0–2% because the value fires only on substrate-health timeout, not on structural rejection. Case 2 in "What a bad run looks like" rewritten to name the Prolog-timeout semantic. Historical warning-payload context noted; the A/B/C+operator-agreement rate discipline is unchanged operationally.
+- `docs/pre-flight-canary.md` — fixture-02 description updated to describe the L3-firewall-rejection `draft_fact` path with `"Entity/Topological Drift"` string, not the retired warning-array shape. Partial-failure table row `draft_fact with warnings` replaced with `draft_fact` (routing by `quarantine_reason` content). Missing-field row reference updated from `docs/response-schema-proposal.md` to `docs/response-schema.md`.
+- `package.json` — version 0.1.4 → 0.1.5.
+
+**Not changed:**
+
+- `quarantine_reason` field name is NOT renamed on the wire. The kit documents its true semantic under its true name ("despite the name, populated on any non-accepted status"). A server-side rename would create a new consumer-facing double the kit's disambiguation block was built to prevent. Rename banked as candidate future breaking change; not now.
+- No fano-engine PR is opened as part of this ratification. Reintroducing the structured warning payload server-side is out of scope for the trial-readiness horizon.
+- `openapi/fano-classifier.openapi.json` untouched. The live service still declares `schema: {}` on the 200 response; consumer codegen tools still produce untyped responses. Adopting `response_model=TrialBalanceResponse` upstream is a fano-engine-side change (documented in `docs/response-schema.md` §"OpenAPI codification status") that would then let the kit refresh the pinned OpenAPI.
+- Disambiguation block in `README.md` — the four Fano-has-doubles pairs from v0.1.4 are preserved.
+- TypeScript SDK (`src/*.ts`) — unchanged. `LegacyResponseAdapter` continues to apply correctly (it targets the flat response shape).
+- Canonical fixtures under `examples/canonical-fixtures/` — unchanged. `expected_response_shape` in each fixture already describes the wire-truth shape; the fixtures were captured 2026-06-25 mini-Gauntlet against production directly.
+
+**Why now:**
+
+The mc16 consumer-trial-readiness ratification arc (2026-08-24 → 2026-08-25) surfaced that the kit had been documenting the wire incorrectly for eight weeks. Daniyal's team was about to code against the aspirational structured-warnings surface and find zero warning-kinds firing in their trial. Ratifying against wire truth before the trial fires prevents the specific class of confusion this month has been spent eliminating. Andrew ratified Option A (kit describes wire truth) via Fable ∮-RULING 2026-08-25 01:52 UTC. Order of operations locked: Q2 grep → delta report amendment → v0.1.5 PR (this release) → NO merge → NO deploy.
+
+**Cross-references (Brain-side; private):**
+
+- `memory/2026-08-24-mc16-fano-response-schema-delta-report.md` — turn-01 delta report.
+- `memory/2026-08-25-mc17-fano-response-schema-delta-amendment-turn-02.md` — turn-02 branch coverage amendment.
+- `memory/rev27-warning-loss-decision-record.md` — dated decision record with review trigger.
+
 ## v0.1.4 — 2026-08-24 (trial-readiness framing pass)
 
 **Added:**

@@ -163,9 +163,9 @@ If all five pass, your integration is green end-to-end. Move to real datasets.
 | Observation | Diagnosis |
 |---|---|
 | `results[0].predicted_code != "sbrm_1137"` | The classifier is returning something different than the fixture documented. Either (a) the fixture is stale (kit's checked-in fixtures were captured 2026-06-25 against `fano-engine-00032-qan` and may have drifted since retraining), or (b) something has changed in production. Open a `kit-defect` issue with the actual response attached. |
-| `results[0].fano_status == "draft_fact"` with warnings | Bank Accounts is triggering a warning path that didn't fire on 2026-06-25. The cascade might have shifted the confidence bar. Open an issue as above. |
-| `results[0].fano_status == "quarantine"` | Bank Accounts is being rejected as structurally illegal. That is a major deviation from expected behaviour — treat as a `service-defect`. |
-| Response contains a field not documented in `docs/architecture.md` §5 or `docs/response-schema-proposal.md` | Undocumented wire behaviour. Open a `kit-defect` — the kit's contract needs to catch up to the wire. |
+| `results[0].fano_status == "draft_fact"` | Bank Accounts is triggering a non-accepted path (sub-floor OR L3 firewall rejection) that didn't fire on 2026-06-25. Read `quarantine_reason` for which path fired; open an issue with the full response attached. |
+| `results[0].fano_status == "quarantine"` | Bank Accounts triggered a Prolog subprocess timeout — substrate-health issue, NOT structural rejection. Retry may succeed; if persistent, treat as `service-defect`. |
+| Response contains a field not documented in `docs/response-schema.md` | Undocumented wire behaviour. Open a `kit-defect` — the kit's contract needs to catch up to the wire. |
 | Response is missing a field the fixture documents | Same. |
 | HTTP 4xx / 5xx after Steps 1 and 2 passed | Route back through Step 1 to confirm the service is still up. If Step 1 still passes, the payload triggers something unexpected in the cascade — contact `@futureWA`. |
 
@@ -187,10 +187,10 @@ plus a real dataset produces uninterpretable results.
 
 ## Why fixture 01 and not fixtures 02 or 03
 
-- Fixture **02 (Drawings firewall polarity)** exercises the operator-cascade *disagreement*
-  path — good for validating warning-payload handling in your client, less good as a canary
-  because its expected shape includes warning arrays which are inherently more variable across
-  retrains.
+- Fixture **02 (Drawings firewall polarity)** exercises the L3-firewall-rejection `draft_fact`
+  path — good for validating your client's handling of the `"Entity/Topological Drift: ..."`
+  `quarantine_reason` shape, less good as a canary because rejection details are more variable
+  across retrains.
 - Fixture **03 (Loans-to-Beneficiaries sub-floor)** exercises the abstention path — good for
   validating your operator-review queue integration, less good as a canary because the
   sub-floor confidence bar depends on Platt-scaled semantics (`docs/architecture.md §-1`
@@ -209,3 +209,44 @@ warning-handling and sub-floor-abstention code paths — but they are not pre-fl
 - Canary expected response: derived from `examples/canonical-fixtures/01-bank-accounts-all-entities.json`
   (`expected_response_shape` field) — captured 2026-06-25 mini-Gauntlet.
 - Cross-reference (Brain-side; private): `memory/2026-08-24-mc16-fano-consumer-trial-readiness.md` §ITEM 2.
+
+## Logging discipline (framework-caveat)
+
+Before firing real data through Fano, be aware of the following empirical findings about
+request-body logging behaviour (Brain-side wire-forensic 2026-08-24 mc16):
+
+- ✅ **Application-layer logging: CLEAN.** `api/main.py` contains no `logger.*(payload|lines|request|body)`
+  calls and no `print()` statements touching request contents. Verified by direct grep of
+  the substrate at sha256 `8d07ab84...`.
+- ⚠ **Framework-level exception handlers: NOT independently verified.** FastAPI's default
+  exception handler (Starlette's `ExceptionMiddleware`) can surface request-body fragments in
+  a stack trace on unhandled 500 errors. The wire-truth grep covered `api/main.py` but did
+  not cover Starlette middleware or FastAPI's built-in exception handling.
+- ⚠ **Pydantic 422 validation errors DO echo request-body content** in the response body
+  (default FastAPI behaviour). Each validation-error detail contains an `input` field with
+  the offending value. If sensitive strings live in `line.description` and you submit a
+  malformed payload, that content lands in the 422 response AND in the Cloud Run
+  request-response log.
+
+**Practical guidance for consumers:**
+
+- Cloud Run request-response logging captures method + path + status + latency + IP +
+  timestamp by default (not body content in the accepted-request path).
+- Malformed input — including exploratory probes — should be assumed to leave request-body
+  content in logs unless the consumer defends client-side.
+- Retention on `clawdog-ml-engine` (the Fano-engine's GCP project) is Cloud Logging default
+  (30 days). IAM-gated read access; contact `@futureWA` for the current access-list disposition.
+- If your dataset is sanitised, verify what "sanitised" means concretely at your source. The
+  classification input is free-text `line.description` — which is exactly where identifying
+  content survives a sanitisation that only strips account codes or account IDs. A string
+  like `"Payment to Acme Pty Ltd for consulting services"` is both the sensitive field AND
+  the field being classified.
+
+Before firing real data through Fano, confirm with whoever prepared the dataset:
+
+- Are the `description` strings raw as-recorded, or has PII been replaced with placeholders?
+- If replaced, what pattern (e.g. `<CLIENT_A>`, hashing, deterministic tokens)?
+- Does the same sanitisation apply consistently across all rows and all datasets in the batch?
+
+This is not a Fano-side blocker — it's a data-preparation question that determines what your
+trial artefacts (logs, reports, retrospective analyses) will contain.

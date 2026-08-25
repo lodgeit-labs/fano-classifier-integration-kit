@@ -1,137 +1,128 @@
 # Fano Classifier — Architecture Reference
 
 > Canonical architectural reference for adopting teams. This document is **the contract** between Fano and any consumer (LodgeiT-monolith / Coracle / third-party agents / human developers).
+>
+> **Ratified against `~/fano_engine/api/main.py`** sha256 `8d07ab84302e4c3f98dc7bfbd9c4ecaf32158741e2cbe7a50a19ee31fda6edc6` (648 lines; **Rev 27 iter11.B Phase 4a Path α**) on 2026-08-24 mc16 + 2026-08-25 mc17.
 
-## §-1 Production architecture note (iter11.B Rev 27; 2026-06-25 onwards)
+## §0 What Fano is
 
-> **This document still describes the architectural model behind the operator-authoritative response semantic (L1 router → L2 specialist → L3 firewall as the conceptual cascade).** That model is unchanged at the response-contract layer — your consumer code reads `fano_status`, `predicted_code`, `cascade_topology`, `quarantine_reason` exactly as documented below.
->
-> **What changed at the wire on 2026-06-25:** the L1+L2 cascade is now collapsed into a single entity-prefixed neural classifier with Platt-calibrated confidence. The L3 Prolog firewall is unchanged. The response shape your SDK consumes is unchanged. The behaviour you observe is unchanged.
->
-> Specifically: `predicted_code` still comes from the cascade's reading; `cascade_topology` is now resolved by `resolve_canonical_topology(predicted_code)` from the single classifier output (instead of being routed by an L1 macro-family router); `confidence` is the iter11.B Platt-scaled output; the L3 firewall's `evaluate_drift` query still fires per-row over `(predicted_code, expected_topology, entity_structure)`.
->
-> The `LegacyResponseAdapter` in `src/adapter.ts` continues to apply correctly.
->
-> If you want the wire-truth verification: `examples/canonical-fixtures/` contains three real fixtures from the 2026-06-25 production mini-Gauntlet. Run them through your client and you should get the documented response shape.
->
-> Cross-references (private LodgeiT Labs Brain canon): `memory/fano-iterations.md` §10 iter11.B Phase 4c GREEN closure; `memory/2026-06-25.md` mc12; Lesson #64 PROMOTED.
+Fano is a **stateless SBRM classification firewall** — an admission gate over an upstream classification, not a classifier itself. Concretely:
 
-## §0 Two-layer responsibility model
+1. **Your upstream classification is authoritative for audit.** The `(predicted_code, source_topology, confidence)` tuple you submit is echoed back byte-for-byte in the response's `operator_hint_*` fields. Fano never mutates your input.
+2. **Fano produces an independent cascade reading.** A single entity-prefixed neural classifier with Platt-calibrated confidence produces a `(predicted_code, confidence)` tuple; the cascade's canonical 7-class topology is resolved from that code via the SBRM ancestor graph.
+3. **An L3 Prolog firewall decides whether the row is structurally legal.** The firewall queries `evaluate_drift(predicted_code, cascade_topology, entity_structure)` against `sbrm_physics.pl` + `sbrm_sentinels.pl` and returns pass/fail.
+4. **The verdict comes back as `fano_status` + `quarantine_reason`.** Three enum values on `fano_status` distinguish the branches; a string reason accompanies non-accepted rows.
 
-Fano operates inside a two-layer responsibility model:
+The **five canonical warning kinds** documented in kit versions v0.1.0 through v0.1.4 (`topology_disagreement` / `code_disagreement` / `code_consolidation` / `entity_conditional_drift` / `subfloor_abstention`) **do not fire on the wire.** They were designed against a pre-Rev-27 L1+L2 cascade architecture that produced per-layer disagreement signals; Rev 27 collapsed the cascade into a single ONNX inference and the signal sources ceased to exist. This is documented in the private Brain canon under `memory/rev27-warning-loss-decision-record.md` with a review trigger for if per-layer signals ever return. Until then, the response contract is the four-branch structure documented in §2 below.
+
+## §1 Two-layer responsibility model
+
+Fano operates inside a two-layer responsibility model that is unchanged from pre-Rev-27:
 
 - **Layer 1 — Ingest & Firewall (Fano's universe).** Verifies that the foundational `(predicted_code, source_topology, entity_structure)` tuple submitted at `/ingest/trial_balance` is structurally legal under SBRM. Stateless. Sign-blind by design (amount is not an argument to the firewall predicate).
 - **Layer 2 — Report Run Time (consumer's universe).** When the consumer's report engine compiles formal financials, it dynamically maps negative-balance asset rows into presentation-side liability sectors for IFRS / FRS-105 / GAAP-display purposes. Fano never sees this transformation.
 
 Fano is a row-level firewall over a static `(code, topology, entity)` tuple; presentation logic lives in the consumer.
 
-## §1 Layer 1 sub-structure
+## §2 Response construction — four branches
 
-Layer 1 itself refines into two architecturally-distinct sub-layers:
+Every submitted `line` produces exactly one `LineResult` entry in `results[]`. That entry is constructed by one of four branches in `api/main.py`, differentiated by `fano_status` + `quarantine_reason`:
 
-### Layer 1a — Operator wire-truth (AUTHORITATIVE)
+### Branch 1 — Sub-floor abstention (`fano_status: "draft_fact"`)
 
-The tuple submitted at `/ingest/trial_balance` represents the **source chart-of-accounts' structural declaration** about this line item. This is wire-truth from QBO / Xero / MYOB / etc. — what the bookkeeper recorded against the operator's structurally-constrained CoA.
+**Fires when** cascade confidence falls below the SR #4 threshold (nominal 0.50 Platt-scaled).
 
-**Fano accepts Layer 1a as authoritative.** The response's `predicted_code`, `source_topology`, `confidence` fields echo what the operator submitted, byte-for-byte.
+**Wire construction:** `api/main.py` lines 585–590.
 
-### Layer 1b — Cascade independent reading (ADVISORY)
+**Fires BEFORE the L3 Prolog firewall query runs.** The `continue` statement at line 590 skips the firewall entirely for sub-floor rows.
 
-Fano's L1 router + L2 specialist + L3 firewall produce an **independent reading** of what the cascade thinks the same line item should be classified as. This is advisory — Fano is **never allowed to silently mutate Layer 1a fields in the response**.
+**`quarantine_reason` shape:** `"Sub-floor model confidence (0.XX)"` where `0.XX` is the actual confidence.
 
-The cascade's reading ships in `response.cascade.*` audit fields (always populated; downstream consumers can inspect them) and in `response.warnings[].cascade_alternate_hypothesis` (populated only when 1a ≠ 1b).
+**Consumer signal:** cascade lacked confidence. Route to operator; classify by hand.
 
-## §2 The disagreement axis
+### Branch 2 — L3 firewall PASS (`fano_status: "accepted_fact"`)
 
-When 1a == 1b (the dominant case): response confirms the operator's classification; `warnings: []` empty list.
+**Fires when** cascade confidence is above the SR #4 sub-floor AND `swipl evaluate_drift(...)` returns exit code 0 (structural rule satisfied).
 
-When 1a ≠ 1b (the disagreement case): Fano emits **structured warnings** carrying:
+**Wire construction:** `api/main.py` lines 622–626.
 
-- The cascade's alternate hypothesis (code + topology + confidence + confidence_delta against operator)
-- The disagreement reason (structured prose summary + SBRM rule ID + L1 / L2 signal breakdown)
-- A suggested repair-journal (narrative + proposed double-entry + operator_action_required flag + repair_class enum)
+**`quarantine_reason` shape:** `null`.
 
-The consumer (or downstream operator-review UI) decides whether to honour the warning or confirm the original classification.
+**Consumer signal:** row cleared. Write straight through to GL with no operator review.
 
-## §3 Five canonical warning kinds
+### Branch 3 — L3 firewall FAIL (`fano_status: "draft_fact"`)
 
-| kind | severity | when emitted |
+**Fires when** cascade confidence is above sub-floor BUT `swipl evaluate_drift(...)` returns non-zero exit code (structural rule violated under SBRM).
+
+**Wire construction:** `api/main.py` lines 628–635.
+
+**`quarantine_reason` shape:** `"Entity/Topological Drift: Anchor=<cascade_topology>, Guess=<predicted_code>, Entity=<entity_structure>"`.
+
+**Consumer signal:** L3 firewall rejected as structurally illegal. Route to operator; investigate the drift between the operator-submitted classification and the cascade's alternate reading. This is where the historical `topology_disagreement` / `entity_conditional_drift` conceptual categories collapse into a single string-reasoned branch. If a future iteration reintroduces per-layer signals the branch may sub-split into structured kinds again.
+
+### Branch 4 — L3 firewall TIMEOUT (`fano_status: "quarantine"`)
+
+**Fires when** the Prolog subprocess doesn't return within 2 seconds (`subprocess.TimeoutExpired`).
+
+**Wire construction:** `api/main.py` lines 638–643.
+
+**`quarantine_reason` shape:** `"Firewall Timeout Execution Lock"`.
+
+**Consumer signal:** substrate-health issue — the Prolog engine hung or query complexity exceeded the timeout budget. NOT an SBRM-rule violation. Retry may succeed; persistent timeout on the same row is a defect worth reporting.
+
+**⚠ Naming trap:** the value `"quarantine"` fires ONLY on this timeout branch. Consumers coding `if row.fano_status == "quarantine"` expecting "L3 firewall rejected as structurally illegal" are reading it wrong — that verdict is `draft_fact` per Branch 3 above. A future breaking-change server revision may rename to `firewall_timeout` or similar; until then, code defensively: `if row.fano_status != "accepted_fact"` is the honest predicate for "this row needs operator review or triage."
+
+## §3 Non-response error paths
+
+Two structured HTTP 502 error paths fire at classification time, **before** response construction. These short-circuit the whole request and do NOT appear as `results[]` entries:
+
+- **`RuntimeError` on classification** (line 553): iter11.B ONNX bundle isn't loadable. HTTP 502 `{"detail": "iter11.B model bundle missing: ..."}`.
+- **`ValueError` / `FileNotFoundError` on topology resolution** (line 559): classified code can't be resolved to a canonical topology, OR the ONNX file is missing. HTTP 502 `{"detail": "Cascade substrate inconsistency: ..."}`.
+
+Both are substrate-health signals. Persistent 502 on repeated identical input is a defect to report to LodgeiT Labs.
+
+Additionally, **Pydantic validation errors return HTTP 422** with the FastAPI-default error envelope. See §5 "Logging discipline" for the framing-vs-implementation caveat.
+
+## §4 Response schema
+
+See `docs/response-schema.md` for the complete field-by-field ratified schema with wire line-number citations.
+
+Summary of `LineResult` fields (10 always present):
+
+| Field | Type | Source |
 |---|---|---|
-| `topology_disagreement` | warn | Operator submitted topology X; cascade's L1 router predicts topology Y where X ≠ Y |
-| `code_disagreement` | info | Operator submitted code A; cascade's L2 specialist predicts code B where A ≠ B but topology matches |
-| `code_consolidation` | info | Cascade's L2 collapses operator's distinct code to a more general SBRM leaf |
-| `entity_conditional_drift` | halt | L3 firewall rejects on entity-conditional rule (e.g. `sbrm_1122 Beneficiaries` under `entity_structure=company`) |
-| `subfloor_abstention` | warn | Cascade aggregate confidence below the SR #4 0.50 floor; operator hint stands but cascade can't validate |
+| `description` | string | echo of `line.description` |
+| `predicted_code` | `^sbrm_\d+$` | **cascade output** (not the operator's submission) |
+| `confidence` | number 0.0–1.0 | cascade Platt-scaled |
+| `cascade_topology` | 7-class enum | resolved from `predicted_code` |
+| `model_architecture` | string literal | `"iter11.B_R3_entity_prefixed_single_classifier_with_platt_scaling"` |
+| `operator_hint_predicted_code` | string | echo of your submitted `predicted_code` |
+| `operator_hint_source_topology` | string | echo of your submitted `source_topology` |
+| `operator_hint_confidence` | number | echo of your submitted `confidence` |
+| `fano_status` | enum | `accepted_fact` / `draft_fact` / `quarantine` — see §2 for branch semantics |
+| `quarantine_reason` | string or `null` | four known string shapes per §2 |
 
-`severity` semantics:
+**Note on `predicted_code` semantics:** it is the CASCADE's reading, not your operator submission. Your original code is preserved at `operator_hint_predicted_code`. This is the same shape as prior kit versions documented; the field naming is unchanged from v0.1.4.
 
-- **`info`** — informational; cascade thinks differently but the operator's classification is structurally legal under SBRM (no action required from operator)
-- **`warn`** — meaningful disagreement; operator should review
-- **`halt`** — structural drift; the operator's submission cannot be written to GL without resolution
+## §5 Logging discipline (framework-caveat)
 
-## §4 Warning payload schema
+The kit's SR #2 disposition (from mc16 wire-forensic 2026-08-24) is:
 
-```yaml
-Warning:
-  kind: "topology_disagreement" | "code_disagreement" | "code_consolidation" | "entity_conditional_drift" | "subfloor_abstention"
-  severity: "info" | "warn" | "halt"
-  message: <human-readable one-line summary>
-  cascade_alternate_hypothesis:
-    predicted_code: <sbrm_NNNN>
-    topology: <7-class topology>
-    aggregate_confidence: <0.0-1.0>
-    confidence_delta: <signed float; cascade conf minus operator conf>
-  disagreement_reason:
-    summary: <string; structured prose explanation>
-    sbrm_rule_id: <Prolog predicate name; e.g. "evaluate_drift/3">
-    l1_signal:
-      predicted_domain: <5-class L1 output>
-      confidence: <0.0-1.0>
-    l2_signal:
-      predicted_code: <sbrm_NNNN>
-      confidence: <0.0-1.0>
-  suggested_repair_journal:
-    narrative: <string; human-readable explanation of the proposed repair>
-    proposed_entry:
-      debit:
-        account: <string; account name or sbrm_NNNN>
-        amount: <decimal>
-      credit:
-        account: <string>
-        amount: <decimal>
-    operator_action_required: <bool>
-    repair_class: "reclassify_topology" | "reclassify_code" | "verify_coa_config" | "no_action_needed"
-```
+- ✅ **Application-layer logging: CLEAN.** No `logger.*(payload|lines|request|body)` calls; no `print()` statements touching request contents. Verified by grep of `api/main.py` at wire truth.
+- ⚠ **Framework-level exception handlers: NOT independently verified.** FastAPI's default exception handler (Starlette's `ExceptionMiddleware`) can surface request-body fragments in a 500 stack trace on unhandled exceptions. The wire-truth grep covered `api/main.py` but did not cover Starlette middleware or FastAPI's built-in exception handling.
+- ⚠ **Pydantic 422 validation errors DO echo request-body content** in the response body (default FastAPI behaviour). The `input` field of each validation-error detail contains the offending value. If sensitive strings can end up in `line.description` and you submit malformed payloads, that content lands in the 422 response AND in the Cloud Run request-response log.
 
-## §5 Top-level response shape (preview; finalised at η.1)
+**Practical guidance:** Cloud Run request logging captures request path + method + status + latency + IP + timestamp by default (not body content). Pydantic 422 error responses may contain body fragments. Malformed input from a consumer client — including exploratory probes — should be assumed to leave request-body content in logs unless the consumer defends against it client-side.
 
-```yaml
-response_per_line:
-  description: <string>
-  # Authoritative wire-truth (operator-submitted) — UNCHANGED PASS-THROUGH:
-  predicted_code: <sbrm_NNNN; OPERATOR's submission>
-  source_topology: <7-class topology; OPERATOR's submission>
-  confidence: <operator confidence; OPERATOR's submission>
-  # Cascade reading (advisory; preserved for audit + warning derivation):
-  cascade:
-    predicted_code: <sbrm_NNNN; cascade L2 verdict>
-    topology: <7-class topology; cascade L1+L2 verdict>
-    l1_confidence: <0.0-1.0>
-    l2_confidence: <0.0-1.0>
-    aggregate_confidence: <min(l1, l2)>
-  # Fano firewall verdict:
-  fano_status: "accepted_fact" | "draft_fact" | "quarantine"
-  quarantine_reason: <string | null>
-  # NEW (per OT #103 rich warning-payload scope):
-  warnings: List[Warning]
-```
+## §6 Warning payload — historical note + review trigger
 
-## §6 Layer interaction guarantees
+Earlier kit versions (v0.1.0 through v0.1.4) documented five canonical warning kinds plus a rich structured `warnings[]` array with `cascade_alternate_hypothesis` / `disagreement_reason` / `suggested_repair_journal`. **None of that ships on the wire.**
 
-1. **`response.predicted_code` is ALWAYS the operator's submission**, regardless of what the cascade thinks. Downstream consumers reading this field get wire-truth pass-through.
-2. **`response.cascade.predicted_code` is ALWAYS populated** with the cascade's independent reading, regardless of whether it agrees with the operator. This is the audit surface.
-3. **`response.warnings` is empty if and only if** the cascade agrees with the operator on both code and topology AND the L3 firewall accepted AND confidence is above the SR #4 sub-floor.
-4. **Backwards-incompatible note for downstream developers:** if you're upgrading from a pre-η.0 Fano integration, the semantics of `response.predicted_code` have changed. Previously it returned the cascade's verdict; now it returns the operator's submission. The cascade's verdict moved to `response.cascade.predicted_code`. See [`docs/getting-started.md`](getting-started.md) for the migration path.
+The design was made against a pre-Rev-27 cascade (L1 ONNX router → L2 ONNX specialist → L3 Prolog firewall) that produced per-layer disagreement signals. Rev 27 Phase 4a Path α (2026-06-25) collapsed L1+L2 into a single entity-prefixed ONNX inference; the per-layer signal sources ceased to exist; the warning payload was decommissioned as an unnoted side effect of the substrate simplification.
+
+**Historical context is preserved in the private Brain canon** at `memory/rev27-warning-loss-decision-record.md` — a dated decision record with a review trigger that fires if per-layer disagreement signals ever return to the wire (via a future multi-tier iteration, per-layer softmax capture, or explicit re-embedding). At that point structured warnings become architecturally possible again and this document will be revised.
+
+**Consumers coding against the historical warning kinds will find zero of them fire.** The equivalent operator-review-queue signal is now expressed via `fano_status != "accepted_fact"` + `quarantine_reason` string content per §2.
 
 ## §7 Equilibrium constraint
 
@@ -141,7 +132,7 @@ The `/ingest/trial_balance` endpoint enforces:
 abs(sum(line.amount for line in payload.lines)) <= 0.01
 ```
 
-For single-line probes (testing a single classification), this means you MUST include a balancing sentinel line. Recommended pattern:
+For single-line probes (testing a single classification), you MUST include a balancing sentinel line. Recommended pattern:
 
 ```yaml
 lines:
@@ -161,15 +152,14 @@ The TypeScript SDK (η.1) wraps this pattern automatically.
 
 ## §8 Production substrate (for the curious)
 
-- Cloud Run service: `fano-engine` in `clawdog-ml-engine` (Australia-Southeast1)
-- Bare production URL: `https://fano-engine-afmurhqkaq-ts.a.run.app`
-- L1 router: ONNX (sklearn LogReg-on-TFIDF + entity OHE + Pair_Context side-aware feature)
-- L2 specialist: ONNX per L1 domain (5 specialists)
-- L3 firewall: SWI-Prolog `evaluate_drift/3` predicate on SBRM physics
-- Authentication: `X-API-Key` header
+- Cloud Run service: `fano-engine` in `clawdog-ml-engine` project (Australia-Southeast1)
+- Production URL: `https://fano-engine-afmurhqkaq-ts.a.run.app`
+- Classifier: single entity-prefixed neural classifier (iter11.B R3; ONNX; `CalibratedClassifierCV` Platt-scaled)
+- L3 firewall: SWI-Prolog `evaluate_drift/3` predicate on SBRM physics (`sbrm_physics.pl` + `sbrm_sentinels.pl` per Q-mc02.A2 mc02-2026-06-25 sentinel-override discipline)
+- Authentication: `X-API-Key` header (Google IAM/Edge layer; see `docs/pre-flight-canary.md` §2 for error signatures)
 
 Production access is subject to API-key issuance by LodgeiT Labs. Contact [@futureWA](https://github.com/futureWA) for adopter onboarding.
 
 ---
 
-*Cross-references in canonical Brain canon (private; for LodgeiT internal teams): PR α §0 mc01 + PR ε mc06 + PR ζ.0 mc08 + PR ζ.1 mc09.*
+*Cross-references in canonical Brain canon (private; for LodgeiT internal teams): `memory/rev27-warning-loss-decision-record.md` (the Rev 27 warning-payload decommissioning decision record); `memory/2026-08-24-mc16-fano-response-schema-delta-report.md` (turn-01 ratification); `memory/2026-08-25-mc17-fano-response-schema-delta-amendment-turn-02.md` (turn-02 branch-coverage amendment).*
