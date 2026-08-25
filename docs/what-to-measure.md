@@ -17,15 +17,15 @@ measuring a smoke alarm by "did the alarm's opinion of the room match my opinion
 room." You will confidently conclude the alarm is 21% correct and be measuring the wrong
 thing.
 
-## The four numbers to compute per dataset
+## The five numbers to compute per dataset
 
-For each dataset you submit through `POST /ingest/trial_balance`, compute these four numbers
+For each dataset you submit through `POST /ingest/trial_balance`, compute these five numbers
 over the N rows you submitted:
 
 ### A. Acceptance rate
 
 ```
-A = count(rows where fano_status == "accepted_fact" AND (warnings == [] OR warnings absent)) / N
+A = count(rows where fano_status == "accepted_fact") / N
 ```
 
 Share of rows Fano cleared as **structurally legal AND cascade-agreeing**. These are the rows
@@ -40,50 +40,110 @@ Anchors for this range (ATTRIBUTED-BELIEF):
   the 100-row PROD sample.
 - The 60–85% expected range brackets the "typical real-world" prior between these anchors.
 
-### B. Warning-triage rate
+### B1. Sub-floor abstention rate
 
 ```
-B = count(rows where fano_status == "draft_fact" AND warnings != []) / N
+B1 = count(rows where fano_status == "draft_fact"
+           AND quarantine_reason starts with "Sub-floor model confidence") / N
 ```
 
-Share of rows Fano cleared as structurally legal but where the cascade has an alternate
-hypothesis. **This is not a failure — it is the operator-review queue Fano is designed to
-feed.**
+Share of rows where **the model was not confident enough to classify.** Fires before the L3
+firewall query runs; the cascade's confidence fell below the sub-floor threshold and the row
+never reaches structural evaluation.
 
-**Expected range: 10–30%.**
+**This is a model-quality signal.** High B1 means the cascade is uncertain; those rows want
+hand-classification by an operator. It does not tell you whether Fano's structural firewall is
+working — it tells you whether Fano's classifier had a confident opinion.
 
-High B is not a Fano defect. High B means Fano is doing what it was built to do: surfacing
-rows where a senior accountant should have a look. The value Fano delivers is the
-`warnings[].cascade_alternate_hypothesis` + `disagreement_reason` + `suggested_repair_journal`
-on these rows — not the acceptance rate.
+**Expected range on well-formed real data: 5–20% (ATTRIBUTED-BELIEF).** Under a well-calibrated
+iter11.B R3 model the sub-floor should fire on a modest tail of ambiguous descriptions;
+systematic B1 > 30% suggests either the calibration is off or your dataset has an unusually
+high fraction of low-signal descriptions.
 
-### C. Quarantine rate
+### B2. Structural-rejection rate
+
+```
+B2 = count(rows where fano_status == "draft_fact"
+           AND quarantine_reason starts with "Entity/Topological Drift") / N
+```
+
+Share of rows where **the model WAS confident and the L3 Prolog firewall overruled it.** The
+cascade classified with sufficient confidence to pass the sub-floor; the firewall queried
+`evaluate_drift(predicted_code, cascade_topology, entity_structure)` against SBRM physics and
+rejected the row as structurally illegal.
+
+**B2 is the metric that measures what Fano is FOR.** A + B1 + C tell you about the classifier
+and the substrate; B2 tells you about the firewall doing its job. If B2 is zero across all
+datasets, Fano's structural discipline is not engaging on your data at all — either the data
+is pristine (unlikely on real accounting corpora) or the firewall is silently short-circuiting.
+If B2 is well above the expected range and operators agree with the rejections, Fano is
+catching real structural drift that would otherwise land in the GL uncaught.
+
+**Expected range on well-formed real data: 3–15% (ATTRIBUTED-BELIEF).** No prior benchmark on
+iter11.B R3 exists; this range brackets a plausible signal-vs-noise floor given the L3
+firewall's role as a structural discipline layer. Your run establishes the empirical baseline
+(see §"Why this is the benchmark of record" below).
+
+**Consumer routing:** both B1 and B2 rows carry `fano_status: "draft_fact"` and both belong in
+the operator-review queue. The `quarantine_reason` string content is the sub-route key:
+
+- **B1 rows** (`"Sub-floor model confidence (0.XX)"`) want hand-classification. The cascade
+  couldn't produce a confident code; an operator supplies one directly.
+- **B2 rows** (`"Entity/Topological Drift: Anchor=<topo>, Guess=<code>, Entity=<entity>"`) want
+  investigation of the disagreement between operator-submitted classification
+  (`operator_hint_predicted_code`) and cascade's alternate reading (`predicted_code`). The
+  firewall says one of them is structurally illegal; the operator decides which.
+
+**Historical note:** earlier kit versions (v0.1.0–0.1.4) described these two paths together as
+a single "Warning-triage rate" and expected a structured `warnings[]` array with five canonical
+kinds. That structured payload is not implemented on the wire; see `docs/architecture.md` §6
+for the historical context. The rate discipline works the same way now — you're just reading
+`fano_status` + `quarantine_reason` string content instead of a `warnings[]` array. Splitting
+B1 vs B2 recovers the sub-floor-vs-structural-rejection distinction that the retired
+`subfloor_abstention` vs `topology_disagreement`/`entity_conditional_drift` warning kinds would
+have carried.
+
+### C. Quarantine (Prolog timeout) rate
 
 ```
 C = count(rows where fano_status == "quarantine") / N
 ```
 
-Share of rows Fano rejected as **structurally illegal under SBRM**. The L3 Prolog firewall
-identified an SBRM rule violation and refused to accept the row.
+⚠ **Naming trap.** Despite the enum value name, `fano_status == "quarantine"` fires ONLY on
+Prolog subprocess timeout (`subprocess.TimeoutExpired`; 2-second timeout budget). This is a
+**substrate-health signal**, NOT an "L3 firewall rejected as structurally illegal" signal.
+Structural rejections come back as `draft_fact` under B (with `quarantine_reason` starting
+with `"Entity/Topological Drift"`).
 
-**Expected range: 1–10% on well-formed data.**
+See `docs/architecture.md` §2 branch 4 and `docs/response-schema.md` `fano_status` enum for
+full semantic detail.
 
-If C is high (>15%), the interpretation depends on the dataset:
-- If your data is a fresh mid-migration extract from an accounting system that was itself
-  inconsistent, high C is Fano correctly flagging pre-existing garbage. That is Fano working.
-- If your data is from a clean, mature ledger and C is still >15%, either the ledger is
-  hiding structural inconsistencies your firm did not know about, or Fano is over-quarantining
-  (rare — the L3 firewall is conservative by design).
+**Expected range: 0–2% on well-formed data.** A well-provisioned Fano deployment on typical
+inputs should virtually never time out. Persistent C > 5% is a substrate-health signal, not a
+data-quality signal:
+
+- If C spikes on a specific row and retry succeeds, that's noise (transient Prolog scheduling).
+- If C is persistent on the same row across retries, the Prolog query for that row is
+  pathologically slow — report as a `service-defect` with the row's `predicted_code` +
+  `entity_structure` (the two arguments to the firewall query) so LodgeiT Labs can trace it.
+- If C is broadly elevated across many rows, Fano's Prolog engine is under-provisioned or
+  the SBRM physics have grown to exceed the 2s timeout budget — escalate to LodgeiT Labs.
 
 ### The integrity check
 
 ```
-A + B + C = 100%
+A + B1 + B2 + C = 100%
 ```
 
 **If this does not sum to 100%**, there is a schema-parse issue in your client, or Fano is
 returning something the kit does not document. **Report it as a `kit-defect` issue on the
-public repo.** The three rates should partition the population of returned rows exactly.
+public repo.** The four rates should partition the population of returned rows exactly.
+
+If you observe `draft_fact` rows whose `quarantine_reason` matches neither the `"Sub-floor
+model confidence"` prefix nor the `"Entity/Topological Drift"` prefix, that is an
+undocumented shape; report it. In that case A + B1 + B2 + C will be less than 100% because
+your B1 and B2 counters miss the unclassified rows; account for the shortfall as an anomaly
+line in your run report.
 
 ## The load-bearing fifth number: operator-agreement rate
 
@@ -94,8 +154,10 @@ For that, you need a senior accountant.
 
 ### How to compute it
 
-1. **Sample 20 rows** from the union of B (warnings) and C (quarantine). If B + C < 20 rows,
-   sample all of them.
+1. **Sample 20 rows** from the union of B1 (sub-floor abstention) + B2 (structural rejection) + C
+   (quarantine). Stratify the sample: if all three sub-populations are non-empty, draw roughly
+   proportional to their size but ensure at least 3 rows from B2 (the rows where Fano's core
+   function fires). If the total is < 20 rows, sample all of them.
 2. **A senior accountant reviews each row without seeing Fano's verdict first.** They
    independently decide what they would do with the row: accept, review, or reject.
 3. **Compare the accountant's independent verdict to Fano's verdict.** Count agreements.
@@ -103,24 +165,34 @@ For that, you need a senior accountant.
 
 **Expected: ≥14/20 (≥70%).**
 
-This is the number that validates Fano's usefulness. Fano can have a great A/B/C split and
-still be recommending the wrong things. Only the operator-agreement rate catches that.
+This is the number that validates Fano's usefulness. Fano can have a great A / B1 / B2 / C
+split and still be recommending the wrong things. Only the operator-agreement rate catches
+that.
 
-**Why the sample is drawn from B + C, not A:** A is "Fano and operator agree" by construction
-(both said accept). Sampling accepted rows to verify agreement is redundant. B and C are
-where Fano is making non-trivial calls; those are where agreement matters.
+**Why the sample is drawn from B1 + B2 + C, not A:** A is "Fano and operator agree" by
+construction. Sampling accepted rows to verify agreement is redundant. B1, B2, and C are
+where Fano is making non-trivial calls; those are where agreement matters. B2 is the
+load-bearing sub-population because it is where the firewall performs its structural function
+— if operator-agreement on B2 is weak, Fano's structural rules are miscalibrated in a way no
+other metric surfaces.
 
 ## What a good run looks like
 
 | Metric | Range |
 |---|---|
 | A (acceptance) | 60–85% |
-| B (warning-triage) | 10–30% |
-| C (quarantine) | 1–10% |
-| Operator-agreement | ≥14/20 on B+C sample |
-| A + B + C | Exactly 100% |
+| B1 (sub-floor abstention) | 5–20% |
+| B2 (structural rejection) | 3–15% |
+| C (Prolog-timeout quarantine) | 0–2% |
+| Operator-agreement | ≥14/20 on B1+B2+C sample |
+| A + B1 + B2 + C | Exactly 100% |
 
-If your run lands in all five ranges, Fano is working as designed against your data.
+All expected ranges are **ATTRIBUTED-BELIEF** — no prior benchmark on iter11.B R3 exists
+(2026-06-25 architecture flip; see §"Why this is the benchmark of record" below). Your run
+establishes the empirical baseline. If your rates land outside these ranges consistently
+across datasets, the ranges themselves are the thing to revise, not necessarily your run.
+
+If your run lands in all six ranges, Fano is working as designed against your data.
 
 ## What a bad run looks like — and what it means
 
@@ -130,20 +202,41 @@ Either your upstream data is exceptionally clean (possible on a fresh, curated f
 unlikely on real accounting data at scale), or the L3 firewall is not engaging. Report as a
 `service-defect`.
 
-**Case 2: C > 20%.**
-Fano is over-quarantining OR your data is structurally poor. Look at three rows from C. If a
-senior accountant agrees the rows are structurally illegal, this is a data quality signal, not
-a Fano defect. If the accountant disagrees, report as a `service-defect` — the L3 firewall
-may have a rule firing incorrectly.
+**Case 2: C > 5% (persistent).**
+Fano's Prolog subprocess is timing out at more than a substrate-noise rate. This is a
+substrate-health signal, not a data-quality signal (see §C above). If C is broadly elevated
+across many rows, escalate to LodgeiT Labs. If C spikes on specific rows that persist under
+retry, report as `service-defect` with the row's `predicted_code` + `entity_structure`.
 
-**Case 3: A + B + C ≠ 100%.**
-Schema-parse issue in your client OR Fano is emitting an undocumented shape. Report as a
-`kit-defect`.
+**Case 2b: B2 = 0 across all datasets.**
+Fano's L3 firewall is not rejecting any rows structurally. Either your data is unusually
+pristine (uncommon on real accounting corpora), or the firewall is short-circuiting silently.
+Compare with prior sessions or peer teams; if B2 is zero everywhere the firewall is not
+engaging on your workload and Fano's core function is not being measured. Report as a
+`service-defect` if you cannot explain it from data shape alone.
+
+**Case 2c: B1 > 30% systematically.**
+Cascade uncertainty across a broad fraction of your data. Either your dataset has an unusually
+high fraction of low-signal descriptions (e.g. free-text lacking classifier training-distribution
+vocabulary), or iter11.B R3's calibration is drifting off on your workload. Note the pattern in
+your retrospective and share with LodgeiT Labs; not urgent unless it blocks the operator-review
+queue capacity.
+
+**Case 3: A + B1 + B2 + C ≠ 100%.**
+Schema-parse issue in your client OR Fano is emitting an undocumented `quarantine_reason`
+shape. Report as a `kit-defect`.
 
 **Case 4: Operator-agreement < 10/20 (<50%).**
 Fano's verdicts do not track accountant judgement. This is the load-bearing failure mode —
 one that no automated metric catches. Report as a `service-defect` with the 20-row sample
 attached; this is the input the training substrate needs to improve.
+
+**Case 4b: Operator-agreement on B2 rows specifically is < 50%.**
+Even if the aggregate operator-agreement passes, weak agreement on B2 rows in particular
+means the L3 firewall is over-rejecting (or under-rejecting the wrong rows). B2 is where
+Fano's structural discipline lives; if operators disagree with the firewall's rejections at
+a rate incompatible with a discipline layer working correctly, escalate. Attach the B2 sub-sample
+separately in your `service-defect` report.
 
 **Case 5: HTTP 403 or connection errors.**
 Not a Fano-verdict issue. See the pre-flight canary in `docs/pre-flight-canary.md` to
@@ -163,10 +256,19 @@ what the retrained model must beat. If Fano is compared to a hypothetical replac
 is the number the replacement must exceed. Please treat it as such — hurried scoring produces
 a hurried benchmark that we live with for months.
 
+**The B2 counter is the load-bearing metric for what Fano is FOR.** Fano exists to apply the
+L3 Prolog firewall as a structural discipline layer over upstream classifications. B2 is the
+rate at which that firewall fires. Without a B2 counter your trial cannot measure the thing
+Fano exists to measure — A tells you the firewall didn't need to intervene, B1 tells you the
+classifier didn't have a confident opinion, C tells you the substrate timed out, but only B2
+tells you the firewall performed its structural function. Ship B2 in your run report; the
+number matters even if the range in this document proves too wide or too narrow after
+empirical measurement.
+
 **Concretely:** if you cannot get a senior accountant's 20 minutes for the operator-agreement
-sample, do not run the trial yet. Publish A / B / C without operator-agreement and the run
-will be dismissed as "some numbers Fano produced about itself." Publish A / B / C plus
-operator-agreement and the run is the reference point for the architecture.
+sample, do not run the trial yet. Publish A / B1 / B2 / C without operator-agreement and the
+run will be dismissed as "some numbers Fano produced about itself." Publish A / B1 / B2 / C
+plus operator-agreement and the run is the reference point for the architecture.
 
 ## Where to report your results
 
@@ -175,10 +277,10 @@ Open one issue per dataset on the public kit repo
 label. Include:
 
 - Dataset descriptor (synthetic / sanitised / real; row count; entity_structure mix).
-- The five numbers.
+- The six numbers (A / B1 / B2 / C / operator-agreement / integrity-check).
 - The 20-row sample with per-row Fano verdict + operator verdict + one-sentence rationale
-  where they disagreed.
-- Any anomalies (undocumented warning kinds, unexpected HTTP codes, malformed JSON in
+  where they disagreed. Flag which rows came from B1 vs B2 vs C in the sample.
+- Any anomalies (undocumented `quarantine_reason` string shapes, unexpected HTTP codes, malformed JSON in
   responses).
 - The `model_architecture` string returned in `results[0].model_architecture` — this pins
   the benchmark to a specific service revision so future comparisons are meaningful.

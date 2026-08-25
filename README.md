@@ -4,7 +4,7 @@
 
 Fano decides whether a trial-balance row is structurally legal under SBRM and whether the classification you already assigned looks right. It does not classify from scratch. The `fano-classifier` name in this repo, npm package, and Cloud Run service is a legacy — the wire behaviour is firewall + admission-gate. Read `## Before you run Fano` below before your first submission.
 
-> **Status:** v0.1.4 shipped 2026-08-24 — trial-readiness framing pass. Fano-engine production serves **iter11.B Rev 27** (single entity-prefixed classifier + Platt scaling + L3 Prolog firewall) with CORS Phase 5 live since 2026-06-26. Trial-readiness additions: framing paragraph below, `docs/what-to-measure.md`, `docs/pre-flight-canary.md`, `docs/response-schema-proposal.md`. Methodology docs remain staged at η.3.
+> **Status:** v0.1.5 shipped 2026-08-25 — response schema ratified against wire truth (`api/main.py` sha256 `8d07ab84...`). Prior versions documented an aspirational five-warning-kinds architecture that Rev 27 Phase 4a Path α does not implement; that design was decommissioned in June 2026 as an unnoted side effect of the L1+L2 cascade collapse. This release brings the kit's response documentation to wire truth. See `docs/CHANGELOG.md` v0.1.5 entry for the full rationale + `docs/response-schema.md` for the ratified schema. Historical context lives in the private Brain canon with a review trigger. Fano-engine production still serves **iter11.B Rev 27** with CORS Phase 5. Methodology docs remain staged at η.3.
 
 ---
 
@@ -118,7 +118,8 @@ fano-classifier-integration-kit/
 ├── .gitignore             # standard Node/TypeScript
 ├── package.json           # @lodgeit-labs/fano-classifier-client@0.1.1
 ├── docs/                  # architecture + getting-started + lexicon resolution
-│   ├── architecture.md    # Layer 1a/1b operator-authoritative + cascade-advisory
+│   ├── architecture.md    # Ratified against api/main.py sha256:8d07ab84... (Rev 27)
+│   ├── response-schema.md # Ratified response contract with wire line-number citations
 │   ├── getting-started.md # quick orientation for adopters
 │   └── LEXICON.md         # how to resolve sbrm_NNNN → human name
 ├── openapi/               # versioned wire contract + SBRM lexicon snapshot
@@ -131,13 +132,14 @@ fano-classifier-integration-kit/
 
 ## Reference architecture
 
-The canonical architecture document is at [`docs/architecture.md`](docs/architecture.md). Note §-1 in that document describes the current iter11.B R3 architecture (single entity-prefixed classifier + Platt scaling + L3 firewall); the rest of the document describes the response-contract layer, which is unchanged from pre-iter11.B.
+The canonical architecture document is at [`docs/architecture.md`](docs/architecture.md), ratified against wire truth (`~/fano_engine/api/main.py` sha256 `8d07ab84...`) on 2026-08-24 mc16 + 2026-08-25 mc17.
 
-- **Layer 1a — Operator wire-truth (AUTHORITATIVE).** What you submit is what comes back.
-- **Layer 1b — Cascade independent reading (ADVISORY).** What Fano thinks ships alongside.
-- **Five warning kinds** — `topology_disagreement`, `code_disagreement`, `code_consolidation`, `entity_conditional_drift`, `subfloor_abstention`.
-- **Rich warning payload schema** — each warning carries `cascade_alternate_hypothesis`, `disagreement_reason`, `suggested_repair_journal`.
-- **Response schema (proposal, not yet ratified)** — [`docs/response-schema-proposal.md`](docs/response-schema-proposal.md) reconstructs the response body from prose + fixtures for codification into the upstream OpenAPI. Until ratified, `openapi/fano-classifier.openapi.json` declares the response as untyped.
+- **Operator wire-truth (AUTHORITATIVE).** What you submit is echoed at `operator_hint_*` fields for audit; Fano never mutates your input.
+- **Cascade independent reading.** The single entity-prefixed classifier produces `predicted_code` + `confidence`; `cascade_topology` is resolved from that code via the SBRM ancestor graph.
+- **Four wire branches on the response** — sub-floor abstention (`draft_fact`), L3 firewall PASS (`accepted_fact`), L3 firewall FAIL (`draft_fact` with `"Entity/Topological Drift"` string), L3 firewall TIMEOUT (`quarantine` — substrate-health signal, NOT structural rejection).
+- **Response schema (ratified)** — [`docs/response-schema.md`](docs/response-schema.md) is the wire contract with substrate sha256 pinned in the provenance header. `openapi/fano-classifier.openapi.json` still declares the response as untyped because `api/main.py` doesn't yet declare a `response_model=` on the endpoint decorator; consumer codegen produces untyped responses until that lands upstream.
+
+**On the five historical warning kinds** — `topology_disagreement`, `code_disagreement`, `code_consolidation`, `entity_conditional_drift`, `subfloor_abstention`: these were designed against a pre-Rev-27 L1+L2 cascade that produced per-layer disagreement signals. Rev 27 Phase 4a collapsed the cascade into a single ONNX inference; the signal sources ceased to exist; the warning payload was decommissioned as an unnoted side effect. See `docs/architecture.md` §6 for the historical note. Consumers coding against those kinds will find zero of them fire in production.
 
 ## API surface
 

@@ -12,13 +12,13 @@ Authentication: X-API-Key header
 Content-Type: application/json
 ```
 
-You submit a trial balance (entity structure + list of line items each carrying a foundational classification). Fano returns the operator's submission unchanged, the cascade's independent reading, a firewall verdict, and zero-or-more structured warnings.
+You submit a trial balance (entity structure + list of line items each carrying a foundational classification). Fano returns your operator-submitted values echoed back for audit, plus the cascade's independent reading + a firewall verdict (`fano_status`) with a string reason (`quarantine_reason`) on non-accepted rows.
 
 ## The mental model in three sentences
 
 1. **You submit what you know.** Your bookkeeper or upstream classifier already assigned `(predicted_code, source_topology, entity_structure)` based on the source CoA. Submit that as-is.
-2. **Fano gives you a second opinion.** The cascade independently reads the line and returns its alternate hypothesis in `response.cascade.*`. Equality is the common case.
-3. **Warnings highlight the disagreements.** When the cascade reads the line differently, you get a structured warning explaining why and suggesting a repair journal. The operator (typically a senior accountant) decides whether to honour the warning.
+2. **Fano gives you a second opinion.** The cascade independently reads the line and returns its own `predicted_code` + `confidence` + `cascade_topology`. Your original submission is preserved at `operator_hint_*` fields for audit.
+3. **The firewall verdict comes back as `fano_status` + `quarantine_reason`.** Three enum values distinguish the branches: `accepted_fact` (write straight through), `draft_fact` (route to operator review), or `quarantine` (Prolog subprocess timeout — substrate-health issue, not a rule violation). See §"When Fano flags or rejects a row" below for the four wire branches.
 
 ## Minimal example
 
@@ -49,7 +49,7 @@ Content-Type: application/json
 }
 ```
 
-Expected response shape (full schema at [`architecture.md`](architecture.md) §5):
+Expected response shape (full schema at [`response-schema.md`](response-schema.md)):
 
 ```json
 {
@@ -59,29 +59,43 @@ Expected response shape (full schema at [`architecture.md`](architecture.md) §5
     {
       "description": "Trading Revenue",
       "predicted_code": "sbrm_4100",
-      "source_topology": "revenue",
       "confidence": 0.95,
-      "cascade": { ... },
+      "cascade_topology": "revenue",
+      "model_architecture": "iter11.B_R3_entity_prefixed_single_classifier_with_platt_scaling",
+      "operator_hint_predicted_code": "sbrm_4100",
+      "operator_hint_source_topology": "revenue",
+      "operator_hint_confidence": 0.95,
       "fano_status": "accepted_fact",
-      "quarantine_reason": null,
-      "warnings": []
+      "quarantine_reason": null
     },
     { ... sentinel row ... }
   ]
 }
 ```
 
+Note: `predicted_code` in the response is the **cascade's** reading (may or may not match what you submitted). Your submitted value is echoed at `operator_hint_predicted_code`. On this example both agree; that's the common case.
+
 Note the equilibrium constraint: `abs(sum(line.amount)) <= 0.01`. Single-line probes need a balancing sentinel; the η.1 TypeScript SDK wraps this automatically.
 
-## When you see a warning
+## When Fano flags or rejects a row
 
-The most common warning kinds and what they mean operationally:
+Fano's per-row response falls into one of four wire branches, distinguished by `fano_status` + `quarantine_reason` string content. See `docs/architecture.md` §2 for the full construction-site details with wire line numbers; the operational summary is:
 
-- **`topology_disagreement` (warn)** — the operator submitted a code from one sector (e.g. revenue) under a different topology (e.g. liabilities). Surface to the operator with the suggested repair journal; let them confirm whether the source CoA is genuinely misconfigured.
-- **`code_disagreement` (info)** — the operator submitted code A; cascade prefers code B; both are in the same topology. Usually a fine-grained difference; can be auto-accepted or surfaced for review depending on your queue policy.
-- **`code_consolidation` (info)** — cascade picked a more general SBRM leaf than the operator. Often appropriate for high-volume rows where you don't need leaf-precision.
-- **`entity_conditional_drift` (halt)** — the cascade caught a structural drift (e.g. a Trust-only code submitted under a Company entity). Don't write to GL; surface for resolution.
-- **`subfloor_abstention` (warn)** — the cascade lacks confidence on this row. The operator hint stands by default; the row enters the operator-review queue.
+**`fano_status: "accepted_fact"` + `quarantine_reason: null`** — cascade classified AND L3 firewall passed. Row can write straight through to GL. No operator review needed.
+
+**`fano_status: "draft_fact"` + `quarantine_reason: "Sub-floor model confidence (0.XX)"`** — the cascade's confidence fell below the sub-floor threshold. Fires *before* the L3 firewall runs. Cascade couldn't validate the row with sufficient confidence; route to operator for hand-classification.
+
+**`fano_status: "draft_fact"` + `quarantine_reason: "Entity/Topological Drift: Anchor=<topo>, Guess=<code>, Entity=<entity>"`** — the cascade classified but the L3 Prolog firewall rejected the row as structurally illegal under SBRM. This is where structural violations surface (topology mismatch / entity-conditional drift / etc.). Route to operator; investigate the drift between the operator submission and the cascade's alternate reading.
+
+**`fano_status: "quarantine"` + `quarantine_reason: "Firewall Timeout Execution Lock"`** — ⚠ **naming trap.** This value fires ONLY when the Prolog subprocess doesn't return within 2 seconds. It is a substrate-health signal, NOT an SBRM-rule violation. A consumer coding `if row.fano_status == "quarantine"` expecting "L3 firewall rejected as structurally illegal" is reading it wrong — that verdict is `draft_fact` per the previous branch. Retry may succeed; persistent timeout on the same row is a defect worth reporting.
+
+**Defensive predicate for routing:** `if row.fano_status != "accepted_fact"` is the honest way to say "this row needs operator review or triage." Sub-route by inspecting `quarantine_reason` string content.
+
+### On historical warning kinds
+
+Earlier kit versions (v0.1.0 through v0.1.4) documented five canonical warning kinds (`topology_disagreement`, `code_disagreement`, `code_consolidation`, `entity_conditional_drift`, `subfloor_abstention`) plus a rich structured `warnings[]` array. **None of that ships on the wire.** The design was made against a pre-Rev-27 cascade that produced per-layer disagreement signals; Rev 27 collapsed the cascade into a single ONNX inference; the warning payload was decommissioned as an unnoted side effect. See `docs/architecture.md` §6 for the historical note and `docs/response-schema.md` for the ratified schema.
+
+Consumers coding against the historical warning kinds will find zero of them fire in production. The equivalent operator-review-queue signal is now expressed via `fano_status != "accepted_fact"` + `quarantine_reason` string content per the four branches above.
 
 ## The operator-review pattern
 
@@ -90,13 +104,11 @@ Adopting teams typically wrap Fano in a three-stage pipeline:
 ```
 TB import → POST /ingest/trial_balance → Operator-review queue → GL write
                                               ↑                       ↑
-                                  rows with warnings           approval signature
-                                  or sub-floor confidence      + provenance chain
+                                  rows where                 approval signature
+                                  fano_status != accepted_fact + provenance chain
 ```
 
-Rows that come back as `accepted_fact` with `warnings: []` can write through directly. Rows with `warnings` or `fano_status != "accepted_fact"` enter the queue. A human operator reviews, approves or rejects the cascade's alternate hypothesis (and optionally applies the suggested repair journal), and the approved row writes to GL with full provenance.
-
-Detailed implementation patterns ship at η.3.
+Rows that come back as `fano_status: "accepted_fact"` can write through directly. Rows with `fano_status != "accepted_fact"` enter the queue. A human operator reviews, decides whether to accept the cascade's `predicted_code` or override with the operator-submitted `operator_hint_predicted_code`, and the approved row writes to GL with full provenance.
 
 ## Getting an API key
 
