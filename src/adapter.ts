@@ -45,10 +45,10 @@ export const SUBFLOOR_CONFIDENCE = 0.5;
  * @param legacy The legacy response per-line as returned by production today
  */
 export function adaptLegacyLineResponse(legacy: LegacyLineResponse): LineResponse {
-  const cascadeAggregate = Math.min(
-    legacy.cascade_l1_confidence,
-    legacy.cascade_l2_confidence,
-  );
+  // iter11.B collapsed L1+L2 into a single classifier; the wire carries one
+  // Platt-scaled `confidence`, not separate l1/l2 signals. The aggregate IS
+  // that single confidence (no min() over two signals that no longer exist).
+  const cascadeAggregate = legacy.confidence;
 
   const warnings = deriveWarnings(legacy, cascadeAggregate);
 
@@ -62,8 +62,11 @@ export function adaptLegacyLineResponse(legacy: LegacyLineResponse): LineRespons
     cascade: {
       predicted_code: legacy.predicted_code,
       topology: legacy.cascade_topology,
-      l1_confidence: legacy.cascade_l1_confidence,
-      l2_confidence: legacy.cascade_l2_confidence,
+      // Single-classifier substrate (iter11.B): no separate L1/L2 signals on
+      // the wire. Both slots carry the one Platt-scaled confidence for
+      // backward-compatible shape; they are not independent measurements.
+      l1_confidence: legacy.confidence,
+      l2_confidence: legacy.confidence,
       aggregate_confidence: cascadeAggregate,
     },
     fano_status: legacy.fano_status,
@@ -145,11 +148,11 @@ function buildSubfloorWarning(
       sbrm_rule_id: 'confidence_floor/1',
       l1_signal: {
         predicted_domain: l1DomainFromTopology(legacy.cascade_topology),
-        confidence: legacy.cascade_l1_confidence,
+        confidence: legacy.confidence,
       },
       l2_signal: {
         predicted_code: legacy.predicted_code,
-        confidence: legacy.cascade_l2_confidence,
+        confidence: legacy.confidence,
       },
     },
     suggested_repair_journal: noActionNeededJournal(legacy),
@@ -174,12 +177,12 @@ function buildTopologyDisagreementWarning(
       summary: `L2 specialist routes this code to ${legacy.cascade_topology}; operator's submission under ${legacy.operator_hint_source_topology} is structurally legal at L3 firewall but contradicts L1 routing.`,
       sbrm_rule_id: 'evaluate_drift/3',
       l1_signal: {
-        predicted_domain: legacy.l1_domain,
-        confidence: legacy.cascade_l1_confidence,
+        predicted_domain: l1DomainFromTopology(legacy.cascade_topology),
+        confidence: legacy.confidence,
       },
       l2_signal: {
         predicted_code: legacy.predicted_code,
-        confidence: legacy.cascade_l2_confidence,
+        confidence: legacy.confidence,
       },
     },
     suggested_repair_journal: {
@@ -215,12 +218,12 @@ function buildCodeDisagreementWarning(
       summary: `L2 specialist picks a different SBRM leaf within the same ${legacy.cascade_topology} domain. Both codes are structurally legal; fine-grained classification difference.`,
       sbrm_rule_id: 'evaluate_drift/3',
       l1_signal: {
-        predicted_domain: legacy.l1_domain,
-        confidence: legacy.cascade_l1_confidence,
+        predicted_domain: l1DomainFromTopology(legacy.cascade_topology),
+        confidence: legacy.confidence,
       },
       l2_signal: {
         predicted_code: legacy.predicted_code,
-        confidence: legacy.cascade_l2_confidence,
+        confidence: legacy.confidence,
       },
     },
     suggested_repair_journal: {
@@ -253,12 +256,12 @@ function buildEntityDriftWarning(
       summary: 'L3 Prolog firewall rejected the (code, topology, entity_structure) tuple on an entity-conditional rule. The code is restricted to specific entity types.',
       sbrm_rule_id: 'evaluate_drift/3',
       l1_signal: {
-        predicted_domain: legacy.l1_domain,
-        confidence: legacy.cascade_l1_confidence,
+        predicted_domain: l1DomainFromTopology(legacy.cascade_topology),
+        confidence: legacy.confidence,
       },
       l2_signal: {
         predicted_code: legacy.predicted_code,
-        confidence: legacy.cascade_l2_confidence,
+        confidence: legacy.confidence,
       },
     },
     suggested_repair_journal: {

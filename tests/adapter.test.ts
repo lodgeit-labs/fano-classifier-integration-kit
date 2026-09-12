@@ -28,10 +28,7 @@ describe('adaptLegacyLineResponse — Layer 1a wire-truth pass-through', () => {
       // Legacy: predicted_code = cascade's verdict
       predicted_code: 'sbrm_4100',
       confidence: 0.85,
-      l1_domain: 'revenue',
       cascade_topology: 'revenue',
-      cascade_l1_confidence: 0.88,
-      cascade_l2_confidence: 0.83,
       // Operator submitted differently:
       operator_hint_predicted_code: 'sbrm_4401',
       operator_hint_source_topology: 'current_liabilities',
@@ -48,15 +45,12 @@ describe('adaptLegacyLineResponse — Layer 1a wire-truth pass-through', () => {
     expect(canonical.cascade.topology).toBe('revenue');
   });
 
-  it('cascade.aggregate_confidence = min(l1_confidence, l2_confidence)', () => {
+  it('cascade.aggregate_confidence = the single Platt-scaled confidence (iter11.B; no l1/l2 split)', () => {
     const legacy: LegacyLineResponse = {
       description: 'Sales',
       predicted_code: 'sbrm_4100',
       confidence: 0.85,
-      l1_domain: 'revenue',
       cascade_topology: 'revenue',
-      cascade_l1_confidence: 0.92,
-      cascade_l2_confidence: 0.88, // min
       operator_hint_predicted_code: 'sbrm_4100',
       operator_hint_source_topology: 'revenue',
       operator_hint_confidence: 0.95,
@@ -64,7 +58,7 @@ describe('adaptLegacyLineResponse — Layer 1a wire-truth pass-through', () => {
       quarantine_reason: null,
     };
     const canonical = adaptLegacyLineResponse(legacy);
-    expect(canonical.cascade.aggregate_confidence).toBe(0.88);
+    expect(canonical.cascade.aggregate_confidence).toBe(0.85);
   });
 });
 
@@ -75,10 +69,7 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
       description: 'Misclassified Revenue 952',
       predicted_code: 'sbrm_4100',
       confidence: 0.7658,
-      l1_domain: 'revenue',
       cascade_topology: 'revenue',
-      cascade_l1_confidence: 0.78,
-      cascade_l2_confidence: 0.83,
       operator_hint_predicted_code: 'sbrm_4401',
       operator_hint_source_topology: 'current_liabilities',
       operator_hint_confidence: 0.709,
@@ -100,10 +91,7 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
       description: 'Wages',
       predicted_code: 'sbrm_5511',
       confidence: 0.85,
-      l1_domain: 'expenses',
       cascade_topology: 'expenses',
-      cascade_l1_confidence: 0.88,
-      cascade_l2_confidence: 0.82,
       operator_hint_predicted_code: 'sbrm_5500', // different code, same topology
       operator_hint_source_topology: 'expenses',
       operator_hint_confidence: 0.9,
@@ -122,10 +110,7 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
       description: 'Uncategorised',
       predicted_code: 'sbrm_5500',
       confidence: 0.4,
-      l1_domain: 'expenses',
       cascade_topology: 'expenses',
-      cascade_l1_confidence: 0.45, // min, below sub-floor
-      cascade_l2_confidence: 0.6,
       operator_hint_predicted_code: 'sbrm_5500',
       operator_hint_source_topology: 'expenses',
       operator_hint_confidence: 0.85,
@@ -144,10 +129,7 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
       description: 'Beneficiaries Account',
       predicted_code: 'sbrm_1122',
       confidence: 0.72,
-      l1_domain: 'assets',
       cascade_topology: 'current_assets',
-      cascade_l1_confidence: 0.85,
-      cascade_l2_confidence: 0.72,
       operator_hint_predicted_code: 'sbrm_1122',
       operator_hint_source_topology: 'current_assets',
       operator_hint_confidence: 0.8,
@@ -166,10 +148,7 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
       description: 'Trading Revenue',
       predicted_code: 'sbrm_4100',
       confidence: 0.9,
-      l1_domain: 'revenue',
       cascade_topology: 'revenue',
-      cascade_l1_confidence: 0.92,
-      cascade_l2_confidence: 0.88,
       operator_hint_predicted_code: 'sbrm_4100', // same as cascade
       operator_hint_source_topology: 'revenue', // same as cascade
       operator_hint_confidence: 0.95,
@@ -191,10 +170,7 @@ describe('adaptLegacyResponse — full response transformation', () => {
           description: 'Trading Revenue',
           predicted_code: 'sbrm_4100',
           confidence: 0.9,
-          l1_domain: 'revenue',
           cascade_topology: 'revenue',
-          cascade_l1_confidence: 0.92,
-          cascade_l2_confidence: 0.88,
           operator_hint_predicted_code: 'sbrm_4100',
           operator_hint_source_topology: 'revenue',
           operator_hint_confidence: 0.95,
@@ -205,10 +181,7 @@ describe('adaptLegacyResponse — full response transformation', () => {
           description: 'Probe Sentinel Balancing Line (NOT SCORED)',
           predicted_code: 'sbrm_2266',
           confidence: 0.95,
-          l1_domain: 'liabilities',
           cascade_topology: 'current_liabilities',
-          cascade_l1_confidence: 0.95,
-          cascade_l2_confidence: 0.95,
           operator_hint_predicted_code: 'sbrm_2266',
           operator_hint_source_topology: 'current_liabilities',
           operator_hint_confidence: 0.99,
