@@ -206,30 +206,33 @@ export interface TrialBalanceResponse {
 // ============================================================================
 
 /**
- * Current-production response shape (pre-OT-#103).
+ * Current-production response shape (iter11.B R3; wire-verified 2026-09-12).
  *
- * `predicted_code` is the CASCADE's verdict (not the operator's submission).
- * Operator hints are preserved separately as `operator_hint_*` fields.
- *
- * Use `LegacyResponseAdapter` to transform into canonical `LineResponse`.
+ * `predicted_code` is FANO'S OWN classification (not the operator's submission).
+ * The operator's submitted `(predicted_code, source_topology, confidence)` are
+ * echoed back as `operator_hint_*` and treated as a hint only. `fano_status` is
+ * Fano's verdict on Fano's own prediction — NOT an audit of the operator's code.
+ * The iter11.B collapse removed the L1/L2 split, so there is no `l1_domain`,
+ * `cascade_l1_confidence`, or `cascade_l2_confidence` on the wire; the single
+ * classifier's model revision is reported as `model_architecture`.
+ * This interface matches `docs/response-schema.md` exactly (10 fields).
  */
 export interface LegacyLineResponse {
+  /** Echo of the operator-submitted description. */
   description: string;
-  /** CASCADE's predicted code (NOT operator's submission). */
+  /** FANO'S predicted code (NOT the operator's submission). */
   predicted_code: SbrmCode;
-  /** Cascade aggregate confidence. */
+  /** Fano's Platt-scaled confidence in its own prediction. */
   confidence: number;
-  /** 5-class L1 router output. */
-  l1_domain: L1Domain;
-  /** 7-class canonical topology resolved from cascade code. */
+  /** 7-class canonical topology resolved from Fano's predicted_code. */
   cascade_topology: Topology;
-  cascade_l1_confidence: number;
-  cascade_l2_confidence: number;
-  /** Operator's original predicted_code (preserved for audit). */
+  /** Model revision literal, e.g. "iter11.B_R3_entity_prefixed_single_classifier_with_platt_scaling". */
+  model_architecture: string;
+  /** Operator's original predicted_code (echoed hint). */
   operator_hint_predicted_code: SbrmCode;
-  /** Operator's original source_topology (preserved for audit). */
+  /** Operator's original source_topology (echoed hint). */
   operator_hint_source_topology: Topology;
-  /** Operator's original confidence (preserved for audit). */
+  /** Operator's original confidence (echoed hint). */
   operator_hint_confidence: number;
   fano_status: FanoStatus;
   quarantine_reason: string | null;
