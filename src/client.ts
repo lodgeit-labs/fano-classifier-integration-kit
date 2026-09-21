@@ -42,7 +42,7 @@ export interface FanoClientConfig {
   schemaVersion?: SchemaVersion;
   /** Optional fetch implementation override (for testing / Node 18+). */
   fetchImpl?: typeof fetch;
-  /** Request timeout in milliseconds (default 30000). */
+  /** Timeout for the request and response body in milliseconds (default 30000). */
   timeoutMs?: number;
 }
 
@@ -190,9 +190,9 @@ export class FanoClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
-    let response: Response;
+    let raw: unknown;
     try {
-      response = await this.fetchImpl(url, {
+      const response = await this.fetchImpl(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -201,22 +201,22 @@ export class FanoClient {
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        try {
+          const errorBody = (await response.json()) as { detail?: string };
+          if (errorBody.detail) detail = errorBody.detail;
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          // Body wasn't JSON; fall through with HTTP status only.
+        }
+        throw new FanoApiError(response.status, detail);
+      }
+
+      raw = await response.json();
     } finally {
       clearTimeout(timeoutId);
     }
-
-    if (!response.ok) {
-      let detail = `HTTP ${response.status}`;
-      try {
-        const errorBody = (await response.json()) as { detail?: string };
-        if (errorBody.detail) detail = errorBody.detail;
-      } catch {
-        // Body wasn't JSON — fall through with HTTP status only
-      }
-      throw new FanoApiError(response.status, detail);
-    }
-
-    const raw: unknown = await response.json();
 
     // Schema-version dispatch
     if (this.schemaVersion === 'canonical') {

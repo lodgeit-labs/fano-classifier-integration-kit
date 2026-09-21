@@ -4,7 +4,7 @@
  * Uses a mock fetch implementation; no live production calls.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   FanoClient,
   FanoApiError,
@@ -137,6 +137,82 @@ describe('FanoClient construction', () => {
       fetchImpl: vi.fn(),
     });
     expect(client).toBeDefined();
+  });
+});
+
+describe('FanoClient request timeout', () => {
+  const payload = { entity_structure: 'company' as const, lines: [] };
+  const canonical = {
+    status: 'success',
+    equilibrium_valid: true,
+    results: [{ description: 'Synthetic revenue', cascade: {}, warnings: [] }],
+  };
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it.each([200, 503])('aborts a stalled HTTP %i body at the request deadline', async (status) => {
+    let signal: AbortSignal | null | undefined;
+    const json = vi.fn(() => new Promise((_, reject) => {
+      signal!.addEventListener('abort', () => reject(signal!.reason), { once: true });
+    }));
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, options?: RequestInit) => {
+      signal = options?.signal;
+      // Header latency consumes part of the same request deadline.
+      await new Promise(resolve => setTimeout(resolve, 40));
+      return { ok: status === 200, status, json } as unknown as Response;
+    });
+    const client = new FanoClient({ apiKey: 'test-key', fetchImpl, timeoutMs: 100 });
+    const outcome = client.ingestTrialBalance(payload).catch(error => error);
+
+    await vi.advanceTimersByTimeAsync(99);
+    expect(json).toHaveBeenCalledOnce();
+    expect(signal!.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signal!.aborted).toBe(true);
+    expect(await outcome).toMatchObject({ name: 'AbortError' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears the timer after a successful body read', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(canonical)));
+    const client = new FanoClient({ apiKey: 'test-key', fetchImpl });
+
+    await expect(client.ingestTrialBalance(payload)).resolves.toEqual(canonical);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears the timer when fetching fails', async () => {
+    const error = new TypeError('Synthetic network failure');
+    const fetchImpl = vi.fn().mockRejectedValue(error);
+    const client = new FanoClient({ apiKey: 'test-key', fetchImpl });
+
+    await expect(client.ingestTrialBalance(payload)).rejects.toBe(error);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears the timer when a successful response contains invalid JSON', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('not JSON'));
+    const client = new FanoClient({ apiKey: 'test-key', fetchImpl });
+
+    await expect(client.ingestTrialBalance(payload)).rejects.toBeInstanceOf(SyntaxError);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    ['{"detail":"Synthetic service failure"}', 'Synthetic service failure'],
+    ['not JSON', 'HTTP 503'],
+  ])('preserves HTTP error details and clears the timer for body %s', async (body, detail) => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(body, { status: 503 }));
+    const client = new FanoClient({ apiKey: 'test-key', fetchImpl });
+
+    await expect(client.ingestTrialBalance(payload)).rejects.toMatchObject({
+      name: 'FanoApiError', httpStatus: 503, detail,
+    });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
