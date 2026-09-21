@@ -118,6 +118,18 @@ describe('isLegacyResponse / isCanonicalResponse type guards', () => {
     expect(isLegacyResponse({ results: [] })).toBe(false);
     expect(isCanonicalResponse('string')).toBe(false);
   });
+
+  describe.each([
+    { name: 'isLegacyResponse', guard: isLegacyResponse },
+    { name: 'isCanonicalResponse', guard: isCanonicalResponse },
+  ])('$name', ({ guard }) => {
+    it.each([null, undefined, 42, 'bad', true])(
+      'returns false for a non-object first result: %s',
+      (first) => {
+        expect(guard({ results: [first] })).toBe(false);
+      },
+    );
+  });
 });
 
 describe('FanoClient construction', () => {
@@ -141,6 +153,79 @@ describe('FanoClient construction', () => {
 });
 
 describe('FanoClient.ingestTrialBalance — schema dispatch', () => {
+  it.each(['legacy', 'canonical'] as const)(
+    'preserves canonical responses when schemaVersion=%s',
+    async (schemaVersion) => {
+      const response: TrialBalanceResponse = {
+        status: 'success',
+        equilibrium_valid: true,
+        results: [{
+          description: 'Trading Revenue',
+          predicted_code: 'sbrm_4100',
+          source_topology: 'revenue',
+          confidence: 0.9,
+          cascade: {
+            predicted_code: 'sbrm_4100',
+            topology: 'revenue',
+            l1_confidence: 0.9,
+            l2_confidence: 0.9,
+            aggregate_confidence: 0.9,
+          },
+          fano_status: 'accepted_fact',
+          quarantine_reason: null,
+          warnings: [],
+        }],
+      };
+      const client = new FanoClient({
+        apiKey: 'test-key',
+        schemaVersion,
+        fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => response }),
+      });
+      await expect(
+        client.ingestTrialBalance({ entity_structure: 'company', lines: [] }),
+      ).resolves.toBe(response);
+    },
+  );
+
+  it.each([
+    { body: null, diagnostic: 'Body type: null' },
+    { body: undefined, diagnostic: 'Body type: undefined' },
+    { body: 42, diagnostic: 'Body type: number' },
+    { body: 'bad', diagnostic: 'Body type: string' },
+    { body: true, diagnostic: 'Body type: boolean' },
+    { body: { results: [null] }, diagnostic: 'Body keys: results' },
+    { body: { results: [42] }, diagnostic: 'Body keys: results' },
+    { body: { unexpected: true }, diagnostic: 'Body keys: unexpected' },
+  ])('reports an unrecognised response shape for $body', async ({ body, diagnostic }) => {
+    const client = new FanoClient({
+      apiKey: 'test-key',
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => body,
+      }),
+    });
+    await expect(
+      client.ingestTrialBalance({ entity_structure: 'company', lines: [] }),
+    ).rejects.toThrow(
+      'FanoClient: response shape unrecognised; neither legacy nor canonical. '
+      + diagnostic,
+    );
+  });
+
+  it('reports a canonical schema mismatch for a malformed first result', async () => {
+    const client = new FanoClient({
+      apiKey: 'test-key',
+      schemaVersion: 'canonical',
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ results: [null] }),
+      }),
+    });
+    await expect(
+      client.ingestTrialBalance({ entity_structure: 'company', lines: [] }),
+    ).rejects.toThrow('schemaVersion="canonical" expected but response is not canonical-shape');
+  });
+
   it('applies adapter when schemaVersion=legacy and response is legacy-shape', async () => {
     const legacyResponse: LegacyTrialBalanceResponse = {
       status: 'success',

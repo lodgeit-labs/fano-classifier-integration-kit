@@ -129,7 +129,8 @@ export function isLegacyResponse(
   if (typeof raw !== 'object' || raw === null) return false;
   const obj = raw as { results?: unknown };
   if (!Array.isArray(obj.results) || obj.results.length === 0) return false;
-  const first = obj.results[0] as Record<string, unknown>;
+  const first: unknown = obj.results[0];
+  if (typeof first !== 'object' || first === null) return false;
   return (
     'operator_hint_predicted_code' in first &&
     'cascade_topology' in first &&
@@ -144,7 +145,8 @@ export function isCanonicalResponse(
   if (typeof raw !== 'object' || raw === null) return false;
   const obj = raw as { results?: unknown };
   if (!Array.isArray(obj.results) || obj.results.length === 0) return false;
-  const first = obj.results[0] as Record<string, unknown>;
+  const first: unknown = obj.results[0];
+  if (typeof first !== 'object' || first === null) return false;
   return 'cascade' in first && 'warnings' in first;
 }
 
@@ -222,8 +224,8 @@ export class FanoClient {
     if (this.schemaVersion === 'canonical') {
       if (!isCanonicalResponse(raw)) {
         throw new Error(
-          'FanoClient: schemaVersion="canonical" expected but response is legacy-shape. '
-          + 'Set schemaVersion="legacy" or wait for OT #103 production deployment.',
+          'FanoClient: schemaVersion="canonical" expected but response is not canonical-shape. '
+          + 'Check the response or use schemaVersion="legacy" for legacy responses.',
         );
       }
       return raw;
@@ -237,9 +239,12 @@ export class FanoClient {
       // Production has already migrated; pass through
       return raw;
     }
+    const bodyDescription = typeof raw === 'object' && raw !== null
+      ? `Body keys: ${Object.keys(raw).join(', ')}`
+      : `Body type: ${raw === null ? 'null' : typeof raw}`;
     throw new Error(
       `FanoClient: response shape unrecognised; neither legacy nor canonical. `
-      + `Body keys: ${Object.keys(raw as Record<string, unknown>).join(', ')}`,
+      + bodyDescription,
     );
   }
 
